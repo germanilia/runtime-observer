@@ -28,9 +28,11 @@ def sample_events():
         {"schema_version": "1.0", "event_id": "evt-route", "timestamp": "2026-05-09T20:00:01.000Z", "service": service, "kind": "route_discovered", "payload": {"method": "GET", "route_pattern": "/health"}},
         {"schema_version": "1.0", "event_id": "evt-start", "timestamp": "2026-05-09T20:00:02.000Z", "service": service, "trace_id": "trace-1", "span_id": "span-1", "kind": "request_started", "payload": {"method": "GET", "route_pattern": "/health"}},
         {"schema_version": "1.0", "event_id": "evt-log", "timestamp": "2026-05-09T20:00:02.500Z", "service": service, "trace_id": "trace-1", "span_id": "span-1", "kind": "log_record", "payload": {"level": "INFO", "logger_name": "sample", "message": "ok token=Bearer abc.def.ghi", "method": "GET", "route_pattern": "/health"}},
+        {"schema_version": "1.0", "event_id": "evt-span-start", "timestamp": "2026-05-09T20:00:02.600Z", "service": service, "trace_id": "trace-1", "span_id": "span-worker", "kind": "span_started", "payload": {"name": "load_user", "kind": "function"}},
+        {"schema_version": "1.0", "event_id": "evt-span-finish", "timestamp": "2026-05-09T20:00:02.900Z", "service": service, "trace_id": "trace-1", "span_id": "span-worker", "kind": "span_finished", "payload": {"name": "load_user", "kind": "function", "duration_ms": 30, "status": "ok"}},
         {"schema_version": "1.0", "event_id": "evt-finish", "timestamp": "2026-05-09T20:00:03.000Z", "service": service, "trace_id": "trace-1", "span_id": "span-1", "kind": "request_finished", "payload": {"method": "GET", "route_pattern": "/health", "duration_ms": 42, "status_code": 200}},
         {"schema_version": "1.0", "event_id": "evt-exc", "timestamp": "2026-05-09T20:00:04.000Z", "service": service, "trace_id": "trace-2", "kind": "exception_raised", "payload": {"type": "ValueError", "message": "boom"}},
-        {"schema_version": "1.0", "event_id": "evt-db", "timestamp": "2026-05-09T20:00:05.000Z", "service": service, "trace_id": "trace-1", "kind": "db_query", "payload": {"operation": "SELECT", "table": "users", "duration_ms": 7}},
+        {"schema_version": "1.0", "event_id": "evt-db", "timestamp": "2026-05-09T20:00:05.000Z", "service": service, "trace_id": "trace-1", "span_id": "span-worker", "kind": "db_query", "payload": {"operation": "SELECT", "table": "users", "duration_ms": 7}},
         {"schema_version": "1.0", "event_id": "evt-llm", "timestamp": "2026-05-09T20:00:06.000Z", "service": service, "trace_id": "trace-1", "kind": "llm_call", "payload": {"provider": "openai", "model": "gpt-test", "input_tokens": 10, "output_tokens": 5, "duration_ms": 100}},
     ]
 
@@ -67,6 +69,14 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     trace = client.get(f"/api/apps/{app_id}/traces/trace-1").json()
     assert len(trace["events"]) >= 4
     assert len(trace["logs"]) == 1
+
+    trace_map = client.get("/api/traces/trace-1/map").json()
+    flow = trace_map["flow"]
+    assert {node["type"] for node in flow["nodes"]} >= {"route", "span", "dependency", "log"}
+    span_node = next(node for node in flow["nodes"] if node["type"] == "span")
+    db_node = next(node for node in flow["nodes"] if node.get("kind") == "db_query")
+    assert any(edge["from"] == span_node["id"] and edge["to"] == db_node["id"] for edge in flow["edges"])
+    assert any(edge["to"] == span_node["id"] for edge in flow["edges"])
 
     exceptions = client.get(f"/api/apps/{app_id}/exceptions").json()
     assert exceptions[0]["type"] == "ValueError"
