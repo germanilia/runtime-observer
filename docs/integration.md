@@ -254,7 +254,7 @@ Useful endpoints:
 - **403 on ingest:** the project-scoped API key does not match the event `service.project_name`; fix `RUNTIME_OBSERVER_PROJECT_NAME` or generate a key for the intended project.
 - **Dashboard asks for auth:** sign in with the first admin credentials you created on initial login. The ingest bearer key is separate from dashboard login.
 - **Double `/v1/ingest/v1/ingest` URL:** remove `/v1/ingest` from `RUNTIME_OBSERVER_ENDPOINT`.
-- **No exports in local dev:** provide an API key or set `RUNTIME_OBSERVER_INSECURE_LOCAL_DEV=true` for SDK experiments.
+- **No exports in local dev:** provide an API key or set `RUNTIME_OBSERVER_INSECURE_DEV=true` for SDK experiments.
 - **Missing dependency calls:** make sure the dependency package is installed before the observer starts, or call the relevant `observer.instrument_*()` method explicitly.
 - **Logs missing trace IDs:** ensure logging happens inside the FastAPI request context or inside a span created by the observer.
 - **Sensitive data concerns:** use `RUNTIME_OBSERVER_CAPTURE_MODE=prod` and keep `RUNTIME_OBSERVER_CAPTURE_DB_QUERY_VALUES=false` in production-like environments.
