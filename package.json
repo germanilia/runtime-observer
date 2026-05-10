@@ -1,0 +1,14 @@
+{
+  "name": "runtime-observer-browser",
+  "version": "0.1.0",
+  "description": "Browser telemetry helper for Runtime Observer",
+  "type": "module",
+  "main": "./js-sdk/index.js",
+  "exports": {
+    ".": "./js-sdk/index.js"
+  },
+  "files": [
+    "js-sdk/index.js"
+  ],
+  "license": "UNLICENSED"
+}

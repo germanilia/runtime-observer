@@ -56,10 +56,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Runtime Observer local collector")
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
-    parser.add_argument("--api-key", default=None)
-    parser.add_argument("--dashboard-username", default=None)
-    parser.add_argument("--dashboard-password", default=None)
-    parser.add_argument("--db", default=None)
+    parser.add_argument("--api-key", default=None, help="Legacy collector-wide ingest key. Prefer project keys generated in the UI.")
+    parser.add_argument("--secrets", default=None, help="Path to secrets.yml containing the SQLite connection string.")
+    parser.add_argument("--db", default=None, help="Override SQLite path for local development.")
     parser.add_argument("--insecure-dev", action="store_true")
     parser.add_argument("--retention-days", type=int, default=None)
     args = parser.parse_args()
@@ -69,9 +68,10 @@ def main() -> None:
         host=args.host or env.host,
         port=args.port or env.port,
         api_key=args.api_key or env.api_key,
-        dashboard_username=args.dashboard_username or env.dashboard_username,
-        dashboard_password=args.dashboard_password or env.dashboard_password,
+        dashboard_username=env.dashboard_username,
+        dashboard_password=env.dashboard_password,
         database_path=Path(args.db) if args.db else env.database_path,
+        secrets_path=Path(args.secrets) if args.secrets else env.secrets_path,
         insecure_dev_mode=args.insecure_dev or env.insecure_dev_mode,
         retention_days=args.retention_days or env.retention_days,
     )

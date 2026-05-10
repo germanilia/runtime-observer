@@ -4,6 +4,33 @@
 default:
     @just --list
 
+# Find an available port starting from a preferred port.
+[private]
+_find-port PREFERRED:
+    #!/usr/bin/env bash
+    port={{ PREFERRED }}
+    while lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; do
+        echo "Port $port is busy, trying next..." >&2
+        port=$((port + 1))
+    done
+    echo "$port"
+
+# Kill processes listening on a port. Used by `just run` for a predictable dev port.
+[private]
+_kill-port PORT:
+    #!/usr/bin/env bash
+    pids=$(lsof -tiTCP:{{ PORT }} -sTCP:LISTEN 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        echo "Killing process(es) on port {{ PORT }}: $pids"
+        kill $pids 2>/dev/null || true
+        sleep 1
+        remaining=$(lsof -tiTCP:{{ PORT }} -sTCP:LISTEN 2>/dev/null || true)
+        if [ -n "$remaining" ]; then
+            echo "Force killing process(es) on port {{ PORT }}: $remaining"
+            kill -9 $remaining 2>/dev/null || true
+        fi
+    fi
+
 # Configure project-local git hooks
 setup-hooks:
     git config core.hooksPath .githooks
@@ -21,12 +48,21 @@ init:
     just setup-hooks
     @echo "Runtime Observer initialized."
 
-# Run the collector locally
+# Run the application locally with live reload (collector dashboard).
+# This intentionally frees the requested port first for a predictable dev URL.
+run PORT="4319":
+    just _kill-port {{ PORT }}
+    @echo "Runtime Observer UI:      http://127.0.0.1:{{ PORT }}/"
+    @echo "Runtime Observer backend: http://127.0.0.1:{{ PORT }}/v1/ingest"
+    @echo "Runtime Observer API docs: http://127.0.0.1:{{ PORT }}/docs"
+    cd collector && RUNTIME_OBSERVER_INSECURE_DEV=true uv run uvicorn runtime_observer_server.main:app --reload --host 127.0.0.1 --port {{ PORT }} --no-access-log
+
+# Run the collector locally with live reload
 run-collector PORT="4319":
-    cd collector && uv run runtime-observer-server --port {{ PORT }} --insecure-dev
+    just run {{ PORT }}
 
-# Run all tests
-
+# Run all tests. Each test recipe uses dynamically allocated ports so multiple
+# test runs can execute side by side without fighting over the dev port.
 test:
     just test-python-sdk
     just test-collector
@@ -37,12 +73,20 @@ test-smoke:
     just test
 
 # Python SDK tests
-test-python-sdk:
-    cd python-sdk && uv run --with pytest --with fastapi --with httpx python -m pytest tests -q
+test-python-sdk PREFERRED_PORT="4319":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TEST_PORT=$(just _find-port {{ PREFERRED_PORT }})
+    echo "Using Runtime Observer test port $TEST_PORT for SDK tests"
+    cd python-sdk && RUNTIME_OBSERVER_PORT="$TEST_PORT" uv run --with pytest --with fastapi --with httpx python -m pytest tests -q
 
 # Collector API tests
-test-collector:
-    cd collector && uv run --with pytest --with httpx python -m pytest tests -q
+test-collector PREFERRED_PORT="4319":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TEST_PORT=$(just _find-port {{ PREFERRED_PORT }})
+    echo "Using Runtime Observer test port $TEST_PORT for collector tests"
+    cd collector && RUNTIME_OBSERVER_PORT="$TEST_PORT" uv run --with pytest --with httpx python -m pytest tests -q
 
 # Schema/example validation tests
 test-schemas:
@@ -57,6 +101,11 @@ compile:
 lint:
     just compile
 
-# Run the minimal FastAPI example after starting the collector
-run-example PORT="8000":
-    cd examples/python-fastapi-minimal && uv run uvicorn app.main:app --reload --port {{ PORT }}
+# Run the minimal FastAPI example after starting the collector.
+# Uses the requested port if available, otherwise the next free port.
+run-example PREFERRED_PORT="8000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PORT=$(just _find-port {{ PREFERRED_PORT }})
+    echo "Starting example on http://127.0.0.1:$PORT"
+    cd examples/python-fastapi-minimal && uv run uvicorn app.main:app --reload --port "$PORT"

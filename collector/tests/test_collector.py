@@ -1,9 +1,29 @@
 from __future__ import annotations
 
+import os
+
 from fastapi.testclient import TestClient
 
 from runtime_observer_server.config import Settings
 from runtime_observer_server.main import create_app
+
+
+def test_settings_load_database_url_from_secrets_file(tmp_path):
+    secrets_file = tmp_path / "secrets.yml"
+    db_path = tmp_path / "runtime.sqlite3"
+    secrets_file.write_text(f"database:\n  url: sqlite:///{db_path}\n")
+
+    old_value = os.environ.get("RUNTIME_OBSERVER_SECRETS")
+    os.environ["RUNTIME_OBSERVER_SECRETS"] = str(secrets_file)
+    try:
+        settings = Settings.from_env()
+    finally:
+        if old_value is None:
+            os.environ.pop("RUNTIME_OBSERVER_SECRETS", None)
+        else:
+            os.environ["RUNTIME_OBSERVER_SECRETS"] = old_value
+
+    assert settings.database_path == db_path
 
 
 def make_client(tmp_path):
@@ -51,14 +71,36 @@ def correlated_events():
     ]
 
 
+def test_project_api_keys_scope_ingest_by_project(tmp_path):
+    client = make_client(tmp_path)
+    login(client)
+    created = client.post("/api/projects/shop/api-keys", json={"name": "backend sdk"}).json()
+    project_key = created["api_key"]
+
+    response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": correlated_events()[:1]})
+    assert response.status_code == 200
+    assert response.json()["accepted"] == 1
+
+    wrong_project_event = dict(correlated_events()[-2])
+    response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": [wrong_project_event]})
+    assert response.status_code == 403
+
+    projects = client.get("/api/projects").json()
+    assert any(project["project_name"] == "shop" for project in projects)
+    keys = client.get("/api/projects/shop/api-keys").json()
+    assert keys[0]["prefix"] == created["prefix"]
+    assert "api_key" not in keys[0]
+
+
 def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
     client = make_client(tmp_path)
     response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})
     assert response.status_code == 200
-    apps = client.get("/api/apps", auth=dashboard_auth()).json()
+    login(client)
+    apps = client.get("/api/apps").json()
     app_by_name = {app["service_name"]: app for app in apps}
 
-    error_logs = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR"}, auth=dashboard_auth()).json()
+    error_logs = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR"}).json()
     messages = {log["message"] for log in error_logs["logs"]}
     assert messages == {"payment failed", "retry queued"}
     assert "other project noise" not in messages
@@ -68,11 +110,10 @@ def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
     worker_only = client.get(
         "/api/traces/trace-corr/correlated-logs",
         params={"app_ids": app_by_name["worker"]["id"], "level": "ERROR"},
-        auth=dashboard_auth(),
     ).json()
     assert {log["app_id"] for log in worker_only["logs"]} == {app_by_name["worker"]["id"]}
 
-    all_projects = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR", "same_project": "false"}, auth=dashboard_auth()).json()
+    all_projects = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR", "same_project": "false"}).json()
     assert "other project noise" in {log["message"] for log in all_projects["logs"]}
 
 
@@ -126,7 +167,7 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     failing = client.post("/api/agent/get_failing_routes", json={"app_id": app_id, "limit": 5}).json()
     assert isinstance(failing, list)
 
-    clear = client.post("/api/admin/clear", headers={"Authorization": "Bearer test-key"})
+    clear = client.post("/api/admin/clear")
     assert clear.status_code == 200
     assert client.get("/api/apps").json() == []
 

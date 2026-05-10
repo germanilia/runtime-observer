@@ -49,6 +49,7 @@ test-results/
 *.key
 *.p12
 *.pfx
+secrets.yml
 
 # IDE / editor
 .idea/

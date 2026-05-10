@@ -4,17 +4,26 @@
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/v1/ingest` | Bearer API key | Accepts `{ "events": [...] }` telemetry batches. |
-| `POST` | `/v1/ingest/browser` | Query API key unless insecure dev mode | Browser-friendly ingestion endpoint. |
+| `POST` | `/v1/ingest` | Bearer API key | Accepts `{ "events": [...] }` telemetry batches from SDKs. Use a project-scoped key generated in the UI and stored hashed in the DB. |
+| `POST` | `/v1/ingest/browser` | `?api_key=...` query key unless insecure dev mode | Browser/Node helper ingestion endpoint. Project-scoped keys must match `service.project_name`. |
+
+The Python SDK `RUNTIME_OBSERVER_ENDPOINT` should be the collector base URL, for example `http://127.0.0.1:4319`; the SDK appends `/v1/ingest`. Set `RUNTIME_OBSERVER_PROJECT_NAME`, `RUNTIME_OBSERVER_SERVICE_NAME`, and `RUNTIME_OBSERVER_API_KEY` in each application.
 
 ## Dashboard and query APIs
 
-Dashboard routes require basic auth unless insecure dev mode is enabled.
+Dashboard routes require a session cookie unless insecure dev mode is enabled. The first `POST /api/auth/login` creates the admin user when the users table is empty.
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `POST` | `/api/auth/login` | Create first admin or sign in and set a session cookie. |
+| `POST` | `/api/auth/logout` | Delete current session cookie. |
+| `GET` | `/api/auth/me` | Return current dashboard user. |
 | `GET` | `/` | Embedded Runtime Observer dashboard. |
 | `GET` | `/api/apps` | List observed applications. |
+| `GET` | `/api/projects` | List projects for the post-login project selection screen with app/request/error/key counts. |
+| `GET` | `/api/projects/{project_name}/api-keys` | List project API key metadata. Full key values are never returned. |
+| `POST` | `/api/projects/{project_name}/api-keys` | Generate a new project-scoped SDK API key. The full key is returned once. |
+| `DELETE` | `/api/projects/{project_name}/api-keys/{key_id}` | Revoke a project-scoped SDK API key. |
 | `GET` | `/api/overview` | Global counts, recent logs, routes, errors, and dependencies. |
 | `GET` | `/api/apps/{app_id}/overview` | Per-application overview. |
 | `GET` | `/api/apps/{app_id}/routes` | Routes seen for an application. |

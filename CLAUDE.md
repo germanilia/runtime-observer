@@ -42,7 +42,8 @@ Lightweight telemetry contract, Python SDK, and local collector dashboard for ap
 ## Commands
 
 - `just init` — install local editable packages and configure hooks.
-- `just run-collector` — start the collector dashboard.
+- `just run` — start the collector dashboard with live reload, killing any existing listener on the requested port first.
+- `just run-collector` — alias for `just run`.
 - `just test` — run all validation tests.
 - `just test-python-sdk` — run SDK tests.
 - `just test-collector` — run collector tests.

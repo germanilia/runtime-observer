@@ -9,7 +9,7 @@ from pathlib import Path
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS apps (
-  id TEXT PRIMARY KEY, project_name TEXT, service_name TEXT NOT NULL UNIQUE, display_name TEXT, language TEXT,
+  id TEXT PRIMARY KEY, project_name TEXT, service_name TEXT NOT NULL, display_name TEXT, language TEXT,
   runtime_version TEXT, sdk_version TEXT, first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL, metadata_json TEXT NOT NULL
 );
@@ -86,6 +86,16 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   UNIQUE(user_id, project_name, app_id, preference_type, target_kind, target_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_preferences_lookup ON user_preferences(user_id, preference_type, target_kind, app_id, target_id);
+CREATE TABLE IF NOT EXISTS project_api_keys (
+  id TEXT PRIMARY KEY, project_name TEXT NOT NULL, name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL, created_by TEXT,
+  created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_project_api_keys_project ON project_api_keys(project_name, revoked_at);
+CREATE TABLE IF NOT EXISTS project_settings (
+  project_name TEXT PRIMARY KEY, display_name TEXT,
+  created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 
 
@@ -115,7 +125,7 @@ class Database:
                 conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
 
     def clear(self) -> None:
-        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences"]
+        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences", "project_api_keys"]
         with self.connect() as conn:
             for table in tables:
                 conn.execute(f"DELETE FROM {table}")

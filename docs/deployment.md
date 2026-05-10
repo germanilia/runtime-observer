@@ -4,26 +4,41 @@ Runtime Observer is currently optimized for local and lightweight internal deplo
 
 ## Local process
 
+From a checkout:
+
 ```bash
 just init
-just run-collector
+just run
 ```
 
-Set secrets through environment variables or a local `.env` file based on `.env.example`.
+Or install the collector directly from GitHub:
+
+```bash
+python -m pip install \
+  'runtime-observer-server @ git+https://github.com/germanilia/runtime-observer.git#subdirectory=collector'
+
+cp secrets.example.yml secrets.yml
+# edit secrets.yml and set database.url
+RUNTIME_OBSERVER_SECRETS=./secrets.yml runtime-observer-server --host 127.0.0.1 --port 4319
+```
+
+Keep only minimal process settings in environment variables. Put the SQLite connection string in `secrets.yml`. SDK API keys are generated in the dashboard per project and stored hashed in the database. On first dashboard login, create the admin user; later logins require that username/password.
 
 ## Docker Compose
 
 ```bash
 cp .env.example .env
-# edit .env
-RUNTIME_OBSERVER_API_KEY=replace-me docker compose up collector
+cp secrets.example.yml secrets.yml
+# edit .env for host/port and secrets.yml for database.url
+docker compose up collector
 ```
 
 The compose service stores SQLite data in a named Docker volume and exposes the collector on port `4319`.
 
 ## Security checklist
 
-- Replace all placeholder API keys and dashboard passwords.
+- Generate SDK API keys in the dashboard per project; do not keep SDK ingest keys in `.env` files.
+- Record the first admin credentials securely.
 - Keep `RUNTIME_OBSERVER_INSECURE_DEV=false` outside local development.
 - Do not expose the collector publicly without a trusted network boundary or reverse proxy authentication.
 - Back up the SQLite volume if runtime telemetry must be retained.
