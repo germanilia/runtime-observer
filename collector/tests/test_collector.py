@@ -11,6 +11,11 @@ def make_client(tmp_path):
     return TestClient(create_app(settings))
 
 
+def make_insecure_client(tmp_path):
+    settings = Settings(api_key="test-key", database_path=tmp_path / "collector.sqlite3", insecure_dev_mode=True)
+    return TestClient(create_app(settings))
+
+
 def dashboard_auth() -> tuple[str, str]:
     return ("admin", "secret")
 
@@ -73,3 +78,36 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     clear = client.post("/api/admin/clear", headers={"Authorization": "Bearer test-key"})
     assert clear.status_code == 200
     assert client.get("/api/apps", auth=dashboard_auth()).json() == []
+
+
+def test_hidden_route_preferences_are_per_user(tmp_path):
+    client = make_insecure_client(tmp_path)
+    client.post("/v1/ingest", json={"events": sample_events()})
+
+    alice = {"X-Runtime-Observer-User": "alice"}
+    bob = {"X-Runtime-Observer-User": "bob"}
+    route = client.get("/api/entrypoints", headers=alice).json()[0]
+
+    response = client.post(
+        "/api/preferences/hidden",
+        json={"target_kind": "route", "target_id": route["id"], "app_id": route["app_id"]},
+        headers=alice,
+    )
+    assert response.status_code == 200
+
+    assert client.get("/api/entrypoints", headers=alice).json() == []
+    assert client.get(f"/api/apps/{route['app_id']}/routes", headers=alice).json() == []
+    assert client.get("/api/entrypoints", headers=bob).json()[0]["id"] == route["id"]
+    assert client.get(f"/api/apps/{route['app_id']}/routes", headers=bob).json()[0]["id"] == route["id"]
+
+    overview = client.get("/api/overview", headers=alice).json()
+    assert overview["routes"] == []
+    assert overview["totals"]["request_count"] == 0
+
+    hidden = client.get("/api/entrypoints", params={"include_hidden": True}, headers=alice).json()
+    assert hidden[0]["id"] == route["id"]
+    assert hidden[0]["hidden"] == 1
+
+    restore = client.delete(f"/api/preferences/hidden/route/{route['id']}", params={"app_id": route["app_id"]}, headers=alice)
+    assert restore.status_code == 200
+    assert client.get("/api/entrypoints", headers=alice).json()[0]["id"] == route["id"]
