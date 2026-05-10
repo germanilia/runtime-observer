@@ -29,6 +29,45 @@ def sample_events():
     ]
 
 
+def correlated_events():
+    backend = {"project_name": "shop", "name": "backend", "display_name": "Backend", "language": "python"}
+    worker = {"project_name": "shop", "name": "worker", "display_name": "Worker", "language": "python"}
+    other = {"project_name": "other", "name": "other-worker", "display_name": "Other Worker", "language": "python"}
+    return [
+        {"schema_version": "1.0", "event_id": "corr-start", "timestamp": "2026-05-09T21:00:00.000Z", "service": backend, "trace_id": "trace-corr", "kind": "request_started", "payload": {"method": "POST", "route_pattern": "/checkout"}},
+        {"schema_version": "1.0", "event_id": "corr-backend-info", "timestamp": "2026-05-09T21:00:01.000Z", "service": backend, "trace_id": "trace-corr", "kind": "log_record", "payload": {"level": "INFO", "logger_name": "api", "message": "checkout started", "method": "POST", "route_pattern": "/checkout"}},
+        {"schema_version": "1.0", "event_id": "corr-worker-error", "timestamp": "2026-05-09T21:00:02.000Z", "service": worker, "trace_id": "trace-corr", "kind": "log_record", "payload": {"level": "ERROR", "logger_name": "worker", "message": "payment failed"}},
+        {"schema_version": "1.0", "event_id": "corr-worker-near", "timestamp": "2026-05-09T21:00:03.000Z", "service": worker, "kind": "log_record", "payload": {"level": "ERROR", "logger_name": "worker", "message": "retry queued"}},
+        {"schema_version": "1.0", "event_id": "corr-other-near", "timestamp": "2026-05-09T21:00:03.000Z", "service": other, "kind": "log_record", "payload": {"level": "ERROR", "logger_name": "other", "message": "other project noise"}},
+        {"schema_version": "1.0", "event_id": "corr-finish", "timestamp": "2026-05-09T21:00:04.000Z", "service": backend, "trace_id": "trace-corr", "kind": "request_finished", "payload": {"method": "POST", "route_pattern": "/checkout", "duration_ms": 40, "status_code": 500}},
+    ]
+
+
+def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})
+    assert response.status_code == 200
+    apps = client.get("/api/apps", auth=dashboard_auth()).json()
+    app_by_name = {app["service_name"]: app for app in apps}
+
+    error_logs = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR"}, auth=dashboard_auth()).json()
+    messages = {log["message"] for log in error_logs["logs"]}
+    assert messages == {"payment failed", "retry queued"}
+    assert "other project noise" not in messages
+    assert {group["service_name"] for group in error_logs["groups"]} == {"worker"}
+    assert {log["correlation"]["type"] for log in error_logs["logs"]} == {"exact_trace", "nearby_time"}
+
+    worker_only = client.get(
+        "/api/traces/trace-corr/correlated-logs",
+        params={"app_ids": app_by_name["worker"]["id"], "level": "ERROR"},
+        auth=dashboard_auth(),
+    ).json()
+    assert {log["app_id"] for log in worker_only["logs"]} == {app_by_name["worker"]["id"]}
+
+    all_projects = client.get("/api/traces/trace-corr/correlated-logs", params={"level": "ERROR", "same_project": "false"}, auth=dashboard_auth()).json()
+    assert "other project noise" in {log["message"] for log in all_projects["logs"]}
+
+
 def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     client = make_client(tmp_path)
     assert client.post("/v1/ingest", json={"events": []}).status_code == 401

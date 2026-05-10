@@ -30,6 +30,7 @@ Dashboard routes require basic auth unless insecure dev mode is enabled.
 | `GET` | `/api/entrypoints` | All routes across all applications with trace and log counts. |
 | `GET` | `/api/routes/{route_id}/requests` | Recent traces and related logs for a route. |
 | `GET` | `/api/traces/{trace_id}/map` | Full causal map: spans, events, exact logs, dependencies, nearby background logs. |
+| `GET` | `/api/traces/{trace_id}/correlated-logs` | Cross-app trace logs grouped by app/service with `level`, comma-separated `app_ids`, `same_project`, `window_seconds`, and `limit` filters plus exact-vs-nearby correlation metadata. |
 | `GET` | `/api/traces/{trace_id}/agent-context` | Markdown context for agent-assisted debugging of a trace. |
 | `GET` | `/api/dependencies/{dependency_id}/context` | Dependency samples, error samples, and nearby logs. |
 | `GET` | `/api/dependencies/{dependency_id}/agent-context` | Markdown context for agent-assisted debugging of a dependency. |
