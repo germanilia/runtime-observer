@@ -79,6 +79,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, project_name TEXT, app_id TEXT,
+  preference_type TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE(user_id, project_name, app_id, preference_type, target_kind, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_lookup ON user_preferences(user_id, preference_type, target_kind, app_id, target_id);
 """
 
 
@@ -108,7 +115,7 @@ class Database:
                 conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
 
     def clear(self) -> None:
-        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage"]
+        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences"]
         with self.connect() as conn:
             for table in tables:
                 conn.execute(f"DELETE FROM {table}")
