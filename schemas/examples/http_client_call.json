@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f4d7d-0000-7000-8000-000000000010",
+  "timestamp": "2026-05-09T20:00:00.000Z",
+  "service": {
+    "name": "python-fastapi-minimal",
+    "language": "python",
+    "runtime_version": "3.11.9",
+    "sdk_version": "0.1.0"
+  },
+  "trace_id": "018f4d7d-1111-7000-8000-000000000001",
+  "span_id": "018f4d7d-2222-7000-8000-000000000001",
+  "parent_span_id": null,
+  "kind": "http_client_call",
+  "payload": {
+    "method": "GET",
+    "scheme": "https",
+    "host": "api.example.test",
+    "path_template": "/v1/status",
+    "status_code": 200,
+    "duration_ms": 45.7,
+    "retry_count": 0,
+    "error_type": null
+  }
+}

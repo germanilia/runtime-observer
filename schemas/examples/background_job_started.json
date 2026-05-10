@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-05-09T20:00:00.000Z",
+  "service": {
+    "name": "example-api",
+    "language": "python",
+    "runtime_version": "3.11",
+    "sdk_version": "0.1.0"
+  },
+  "trace_id": "018f4d7d-1111-7000-8000-000000000001",
+  "span_id": "018f4d7d-1111-7000-8000-000000000002",
+  "parent_span_id": null,
+  "event_id": "evt-background_job_started",
+  "kind": "background_job_started",
+  "payload": {
+    "job_name": "sync_inventory",
+    "job_id": "job_01",
+    "queue": "default",
+    "correlation_id": "corr_01"
+  }
+}

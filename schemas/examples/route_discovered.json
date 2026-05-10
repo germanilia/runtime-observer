@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f4d7d-0000-7000-8000-000000000003",
+  "timestamp": "2026-05-09T20:00:00.000Z",
+  "service": {
+    "name": "python-fastapi-minimal",
+    "language": "python",
+    "runtime_version": "3.11.9",
+    "sdk_version": "0.1.0"
+  },
+  "trace_id": null,
+  "span_id": null,
+  "parent_span_id": null,
+  "kind": "route_discovered",
+  "payload": {
+    "route_id": "sha256:0c8d",
+    "method": "GET",
+    "route_pattern": "/items/{item_id}",
+    "handler": "read_item",
+    "framework": "fastapi",
+    "tags": [
+      "items"
+    ]
+  }
+}

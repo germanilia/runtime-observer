@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f4d7d-0000-7000-8000-000000000001",
+  "timestamp": "2026-05-09T20:00:00.000Z",
+  "service": {
+    "name": "python-fastapi-minimal",
+    "language": "python",
+    "runtime_version": "3.11.9",
+    "sdk_version": "0.1.0"
+  },
+  "trace_id": null,
+  "span_id": null,
+  "parent_span_id": null,
+  "kind": "app_started",
+  "payload": {
+    "started_at": "2026-05-09T20:00:00.000Z",
+    "environment": "local",
+    "process": {
+      "pid": 12345
+    },
+    "host": {
+      "hostname": "devbox",
+      "platform": "darwin"
+    },
+    "frameworks": [
+      {
+        "name": "fastapi",
+        "version": "0.111.0"
+      }
+    ],
+    "git": {
+      "branch": "main",
+      "commit": "abc1234"
+    },
+    "config": {
+      "capture_logs": true,
+      "capture_mode": "dev"
+    }
+  }
+}

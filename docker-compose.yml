@@ -1,0 +1,22 @@
+services:
+  collector:
+    image: python:3.12-slim
+    working_dir: /app/collector
+    volumes:
+      - .:/app
+      - collector-data:/data
+    environment:
+      RUNTIME_OBSERVER_HOST: 0.0.0.0
+      RUNTIME_OBSERVER_PORT: 4319
+      RUNTIME_OBSERVER_API_KEY: ${RUNTIME_OBSERVER_API_KEY:-local-dev-key}
+      RUNTIME_OBSERVER_DASHBOARD_USERNAME: ${RUNTIME_OBSERVER_DASHBOARD_USERNAME:-admin}
+      RUNTIME_OBSERVER_DASHBOARD_PASSWORD: ${RUNTIME_OBSERVER_DASHBOARD_PASSWORD:-local-dev-key}
+      RUNTIME_OBSERVER_DB: /data/runtime_observer.sqlite3
+      RUNTIME_OBSERVER_INSECURE_DEV: ${RUNTIME_OBSERVER_INSECURE_DEV:-false}
+      RUNTIME_OBSERVER_RETENTION_DAYS: ${RUNTIME_OBSERVER_RETENTION_DAYS:-7}
+    ports:
+      - "4319:4319"
+    command: >
+      sh -c "pip install --no-cache-dir -e . && runtime-observer-server --host 0.0.0.0 --port 4319"
+volumes:
+  collector-data:

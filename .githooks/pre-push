@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_RANGE="HEAD~1..HEAD"
+RANGE=""
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+    if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
+        RANGE="${local_oid}"
+    elif git cat-file -e "${remote_oid}^{commit}" 2>/dev/null; then
+        RANGE="${remote_oid}..${local_oid}"
+    else
+        # Force-pushing a freshly initialized history means the remote base
+        # commit may not exist locally. Review the new commit by itself.
+        RANGE="${local_oid}"
+    fi
+done
+
+RANGE="${RANGE:-$DEFAULT_RANGE}"
+REPORT_DIR=".git/git-reports"
+REPORT_PATH="${REPORT_DIR}/pre-push-latest.html"
+mkdir -p "$REPORT_DIR"
+
+echo "=== Pre-push hook: Running smoke tests ==="
+just test-smoke
+
+echo ""
+echo "=== Pre-push hook: Generating visual git report ==="
+if command -v claude >/dev/null 2>&1; then
+  claude --print --dangerously-skip-permissions \
+    "You are running inside a pre-push git hook.
+
+Generate a visual git review for this range: ${RANGE}
+
+Requirements:
+- Use the git-visualizer skill/tooling.
+- Render the diff for ${RANGE}.
+- Save the HTML report to ${REPORT_PATH}.
+- Do not open a browser.
+- Print exactly one line in the form: REPORT_PATH: ${REPORT_PATH}
+
+Helpful commands:
+- git diff ${RANGE}
+- git diff --name-only ${RANGE}"
+
+  echo "Report saved to ${REPORT_PATH}"
+  echo ""
+  echo "=== Pre-push hook: Claude review & doc refresh ==="
+
+  CLAUDE_OUTPUT=$(claude --print --dangerously-skip-permissions \
+    "You are running as a pre-push git hook for range ${RANGE}.
+
+Do two things:
+
+1. Review the diff for blockers.
+   - Inspect: git diff ${RANGE}
+   - If you find a blocker, print one line per blocker starting with: BLOCKER:
+   - If there are no blockers, print: BLOCKER: none
+
+2. Update documentation only if the changes require it.
+   - Check docs/api.md for endpoint changes
+   - Check docs/architecture.md for structural changes
+   - Check docs/development.md for setup/workflow changes
+   - Check README.md / CLAUDE.md when project usage or agent guidance changed
+   - Only edit files that are genuinely affected
+   - Do not stage, commit, or amend anything
+
+After finishing, print exactly one summary line:
+DOCS_UPDATED: yes|no")
+
+  printf '%s\n' "$CLAUDE_OUTPUT"
+
+  if printf '%s\n' "$CLAUDE_OUTPUT" | grep -q '^BLOCKER:' && \
+     ! printf '%s\n' "$CLAUDE_OUTPUT" | grep -q '^BLOCKER: none$'; then
+      echo "Claude reported blockers. Push aborted."
+      exit 1
+  fi
+
+  if [ -n "$(git status --porcelain -- docs README.md CLAUDE.md AGENTS.md)" ]; then
+      echo "Documentation was updated by the hook. Review the changes, commit them, and push again."
+      exit 1
+  fi
+else
+  echo "Claude CLI not found; skipping visual report and Claude review."
+fi
+
+echo "=== Pre-push hook complete ==="

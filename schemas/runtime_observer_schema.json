@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runtime-observer.local/schema/event-envelope.json",
+  "title": "Runtime Observer Event Envelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "timestamp",
+    "service",
+    "kind",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": [
+        "string",
+        "number",
+        "integer"
+      ]
+    },
+    "service": {
+      "type": "object",
+      "required": [
+        "name",
+        "language"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "runtime_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sdk_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "span_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_span_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "app_started",
+        "dependency_inventory",
+        "route_discovered",
+        "request_started",
+        "request_finished",
+        "span_started",
+        "span_finished",
+        "exception_raised",
+        "db_query",
+        "http_client_call",
+        "llm_call",
+        "log_record",
+        "metric_counter",
+        "sdk_diagnostic",
+        "function_called",
+        "function_returned",
+        "background_job_started",
+        "background_job_finished",
+        "tool_call"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "app_started": {
+      "type": "object",
+      "required": [
+        "started_at"
+      ],
+      "additionalProperties": true
+    },
+    "dependency_inventory": {
+      "type": "object",
+      "required": [
+        "dependencies"
+      ],
+      "additionalProperties": true
+    },
+    "route_discovered": {
+      "type": "object",
+      "required": [
+        "route_id",
+        "method",
+        "route_pattern"
+      ],
+      "additionalProperties": true
+    },
+    "request_started": {
+      "type": "object",
+      "required": [
+        "request_id",
+        "method",
+        "route_pattern"
+      ],
+      "additionalProperties": true
+    },
+    "request_finished": {
+      "type": "object",
+      "required": [
+        "request_id",
+        "method",
+        "route_pattern",
+        "status_code",
+        "duration_ms"
+      ],
+      "additionalProperties": true
+    },
+    "span_started": {
+      "type": "object",
+      "required": [
+        "name",
+        "span_kind"
+      ],
+      "additionalProperties": true
+    },
+    "span_finished": {
+      "type": "object",
+      "required": [
+        "name",
+        "span_kind",
+        "duration_ms",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "exception_raised": {
+      "type": "object",
+      "required": [
+        "exception"
+      ],
+      "additionalProperties": true
+    },
+    "db_query": {
+      "type": "object",
+      "required": [
+        "operation",
+        "statement_fingerprint",
+        "duration_ms"
+      ],
+      "additionalProperties": true
+    },
+    "http_client_call": {
+      "type": "object",
+      "required": [
+        "method",
+        "host",
+        "duration_ms"
+      ],
+      "additionalProperties": true
+    },
+    "llm_call": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "duration_ms"
+      ],
+      "additionalProperties": true
+    },
+    "log_record": {
+      "type": "object",
+      "required": [
+        "level",
+        "logger_name",
+        "message",
+        "correlation_id",
+        "route"
+      ],
+      "additionalProperties": true
+    },
+    "metric_counter": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "additionalProperties": true
+    },
+    "sdk_diagnostic": {
+      "type": "object",
+      "required": [
+        "level",
+        "component",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "function_called": {
+      "type": "object",
+      "required": [
+        "function_name"
+      ],
+      "additionalProperties": true
+    },
+    "function_returned": {
+      "type": "object",
+      "required": [
+        "function_name",
+        "duration_ms"
+      ],
+      "additionalProperties": true
+    },
+    "background_job_started": {
+      "type": "object",
+      "required": [
+        "job_name",
+        "job_id"
+      ],
+      "additionalProperties": true
+    },
+    "background_job_finished": {
+      "type": "object",
+      "required": [
+        "job_name",
+        "job_id",
+        "duration_ms",
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "tool_call": {
+      "type": "object",
+      "required": [
+        "tool_name",
+        "duration_ms",
+        "status"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

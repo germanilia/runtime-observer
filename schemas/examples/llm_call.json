@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "event_id": "018f4d7d-0000-7000-8000-000000000011",
+  "timestamp": "2026-05-09T20:00:00.000Z",
+  "service": {
+    "name": "python-fastapi-minimal",
+    "language": "python",
+    "runtime_version": "3.11.9",
+    "sdk_version": "0.1.0"
+  },
+  "trace_id": "018f4d7d-1111-7000-8000-000000000001",
+  "span_id": "018f4d7d-2222-7000-8000-000000000001",
+  "parent_span_id": null,
+  "kind": "llm_call",
+  "payload": {
+    "provider": "openai",
+    "model": "gpt-4.1-mini",
+    "streaming": false,
+    "duration_ms": 321.5,
+    "input_tokens": 27,
+    "output_tokens": 15,
+    "tool_call_names": [],
+    "prompt_hash": "sha256:9f86d081",
+    "response_hash": "sha256:3a6eb079",
+    "prompt_size_bytes": 92,
+    "response_size_bytes": 54,
+    "error_type": null
+  }
+}
