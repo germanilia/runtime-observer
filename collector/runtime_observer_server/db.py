@@ -70,6 +70,15 @@ CREATE TABLE IF NOT EXISTS llm_usage (
   output_tokens INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0,
   total_duration_ms REAL NOT NULL DEFAULT 0, UNIQUE(app_id, provider, model, route_id)
 );
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin', created_at TEXT NOT NULL, last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 """
 
 

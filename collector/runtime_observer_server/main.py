@@ -1,46 +1,23 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import secrets
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import create_router
+from .api import create_router, session_user
 from .config import Settings
 from .db import Database
 from .store import CollectorStore
 
 
-def _basic_auth_response() -> Response:
-    return Response(
-        "Authentication required",
-        status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Runtime Observer"'},
-    )
-
-
-def _credentials_from_header(value: str) -> tuple[str, str] | None:
-    if not value.startswith("Basic "):
-        return None
-    try:
-        decoded = base64.b64decode(value.removeprefix("Basic "), validate=True).decode("utf-8")
-    except Exception:
-        return None
-    username, separator, password = decoded.partition(":")
-    if not separator:
-        return None
-    return username, password
-
-
-def _is_dashboard_path(path: str) -> bool:
-    if path.startswith("/api/admin/"):
+def _requires_session(path: str) -> bool:
+    if path.startswith("/api/auth/") or path.startswith("/api/admin/"):
         return False
-    return path == "/" or path.startswith("/api/") or path in {"/docs", "/redoc", "/openapi.json"}
+    return path.startswith("/api/") or path in {"/docs", "/redoc", "/openapi.json"}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -62,16 +39,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = store
 
     @app.middleware("http")
-    async def dashboard_basic_auth(request: Request, call_next):
-        if not resolved.insecure_dev_mode and _is_dashboard_path(request.url.path):
-            credentials = _credentials_from_header(request.headers.get("Authorization", ""))
-            if not credentials:
-                return _basic_auth_response()
-            username, password = credentials
-            username_matches = secrets.compare_digest(username, resolved.dashboard_username)
-            password_matches = secrets.compare_digest(password, resolved.dashboard_password)
-            if not username_matches or not password_matches:
-                return _basic_auth_response()
+    async def dashboard_session_auth(request: Request, call_next):
+        if not resolved.insecure_dev_mode and _requires_session(request.url.path):
+            if not session_user(request, database):
+                return JSONResponse({"detail": "Authentication required"}, status_code=401)
         return await call_next(request)
 
     app.include_router(create_router())
