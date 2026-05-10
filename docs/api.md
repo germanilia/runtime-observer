@@ -20,7 +20,7 @@ Dashboard routes require a session cookie unless insecure dev mode is enabled. T
 | `GET` | `/api/auth/me` | Return current dashboard user. |
 | `GET` | `/` | Embedded Runtime Observer dashboard. |
 | `GET` | `/api/apps` | List observed applications. |
-| `GET` | `/api/projects` | List projects for the post-login project selection screen with app/request/error/key counts. |
+| `GET` | `/api/projects` | List projects for the post-login project selection screen with app/request/error/key counts and project `created_at` timestamp. |
 | `GET` | `/api/projects/{project_name}/api-keys` | List project API key metadata. Full key values are never returned. |
 | `POST` | `/api/projects/{project_name}/api-keys` | Generate a new project-scoped SDK API key. The full key is returned once. |
 | `DELETE` | `/api/projects/{project_name}/api-keys/{key_id}` | Revoke a project-scoped SDK API key. |
