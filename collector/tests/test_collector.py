@@ -11,8 +11,9 @@ def make_client(tmp_path):
     return TestClient(create_app(settings))
 
 
-def dashboard_auth() -> tuple[str, str]:
-    return ("admin", "secret")
+def login(client: TestClient, username: str = "admin", password: str = "secret") -> None:
+    response = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert response.status_code == 200
 
 
 def sample_events():
@@ -38,38 +39,55 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     assert response.json()["accepted"] == len(sample_events())
 
     assert client.get("/api/apps").status_code == 401
-    apps = client.get("/api/apps", auth=dashboard_auth()).json()
+    login(client)
+    apps = client.get("/api/apps").json()
     assert len(apps) == 1
     assert apps[0]["project_name"] == "internal-assistant"
     assert apps[0]["service_name"] == "backend"
     assert apps[0]["display_name"] == "Sample API"
     app_id = apps[0]["id"]
 
-    overview = client.get(f"/api/apps/{app_id}/overview", auth=dashboard_auth()).json()
+    overview = client.get(f"/api/apps/{app_id}/overview").json()
     assert overview["request_count"] == 1
     assert overview["log_count"] == 1
 
-    routes = client.get(f"/api/apps/{app_id}/routes", auth=dashboard_auth()).json()
+    routes = client.get(f"/api/apps/{app_id}/routes").json()
     assert routes[0]["route_pattern"] == "/health"
     assert routes[0]["p95_ms"] == 42
 
-    logs = client.get(f"/api/apps/{app_id}/logs", params={"text": "ok"}, auth=dashboard_auth()).json()
+    logs = client.get(f"/api/apps/{app_id}/logs", params={"text": "ok"}).json()
     assert len(logs) == 1
     assert "Bearer" not in logs[0]["message"]
 
-    trace = client.get(f"/api/apps/{app_id}/traces/trace-1", auth=dashboard_auth()).json()
+    trace = client.get(f"/api/apps/{app_id}/traces/trace-1").json()
     assert len(trace["events"]) >= 4
     assert len(trace["logs"]) == 1
 
-    exceptions = client.get(f"/api/apps/{app_id}/exceptions", auth=dashboard_auth()).json()
+    exceptions = client.get(f"/api/apps/{app_id}/exceptions").json()
     assert exceptions[0]["type"] == "ValueError"
 
-    deps = client.get(f"/api/apps/{app_id}/dependencies", auth=dashboard_auth()).json()
+    deps = client.get(f"/api/apps/{app_id}/dependencies").json()
     assert deps[0]["dependency_type"] == "db"
 
-    failing = client.post("/api/agent/get_failing_routes", json={"app_id": app_id, "limit": 5}, auth=dashboard_auth()).json()
+    failing = client.post("/api/agent/get_failing_routes", json={"app_id": app_id, "limit": 5}).json()
     assert isinstance(failing, list)
 
     clear = client.post("/api/admin/clear", headers={"Authorization": "Bearer test-key"})
     assert clear.status_code == 200
-    assert client.get("/api/apps", auth=dashboard_auth()).json() == []
+    assert client.get("/api/apps").json() == []
+
+
+def test_session_login_logout_and_first_admin_bootstrap(tmp_path):
+    client = make_client(tmp_path)
+
+    assert client.get("/api/auth/me").status_code == 401
+    login(client, "owner", "secret")
+    assert client.get("/api/auth/me").json()["user"] == {"username": "owner", "role": "admin"}
+
+    assert client.post("/api/auth/logout").status_code == 200
+    assert client.get("/api/auth/me").status_code == 401
+    assert client.get("/api/apps").status_code == 401
+
+    assert client.post("/api/auth/login", json={"username": "owner", "password": "wrong"}).status_code == 401
+    login(client, "owner", "secret")
+    assert client.get("/api/apps").status_code == 200
