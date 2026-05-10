@@ -74,7 +74,7 @@ def correlated_events():
 def test_project_api_keys_scope_ingest_by_project(tmp_path):
     client = make_client(tmp_path)
     login(client)
-    created = client.post("/api/projects/shop/api-keys", json={"name": "backend sdk"}).json()
+    created = client.post("/api/projects/shop/api-keys").json()
     project_key = created["api_key"]
 
     response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": correlated_events()[:1]})
@@ -89,6 +89,7 @@ def test_project_api_keys_scope_ingest_by_project(tmp_path):
     assert any(project["project_name"] == "shop" for project in projects)
     keys = client.get("/api/projects/shop/api-keys").json()
     assert keys[0]["prefix"] == created["prefix"]
+    assert keys[0]["name"] == "shop"
     assert "api_key" not in keys[0]
 
 

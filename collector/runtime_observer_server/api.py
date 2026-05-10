@@ -374,9 +374,8 @@ def create_router() -> APIRouter:
             )
 
     @router.post("/api/projects/{project_name}/api-keys")
-    async def create_project_api_key(project_name: str, request: Request, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
-        body = await request.json()
-        name = str(body.get("name") or "SDK key").strip()[:80] or "SDK key"
+    def create_project_api_key(project_name: str, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        name = project_name[:80] or "default"
         token, prefix = generate_project_api_key()
         key_id = uuid.uuid4().hex
         timestamp = now_iso()
