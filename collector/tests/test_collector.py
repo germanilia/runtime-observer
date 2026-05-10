@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 
 from fastapi.testclient import TestClient
 
 from runtime_observer_server.config import Settings
+from runtime_observer_server.db import Database
 from runtime_observer_server.main import create_app
 
 
@@ -24,6 +26,44 @@ def test_settings_load_database_url_from_secrets_file(tmp_path):
             os.environ["RUNTIME_OBSERVER_SECRETS"] = old_value
 
     assert settings.database_path == db_path
+
+
+def test_database_self_heals_after_file_removal(tmp_path):
+    db_path = tmp_path / "collector.sqlite3"
+    db = Database(db_path)
+    db_path.unlink()
+
+    with db.connect() as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+
+    assert "routes" in tables
+    assert "user_preferences" in tables
+
+
+def test_database_migrates_old_app_service_name_unique_constraint(tmp_path):
+    db_path = tmp_path / "old.sqlite3"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE apps (
+              id TEXT PRIMARY KEY, service_name TEXT NOT NULL UNIQUE, language TEXT,
+              runtime_version TEXT, sdk_version TEXT, first_seen TEXT NOT NULL,
+              last_seen TEXT NOT NULL, metadata_json TEXT NOT NULL
+            );
+            INSERT INTO apps(id, service_name, language, runtime_version, sdk_version, first_seen, last_seen, metadata_json)
+            VALUES('app-1', 'api', 'python', '3.13', '0.1.0', 'now', 'now', '{}');
+            """
+        )
+
+    db = Database(db_path)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO apps(id, project_name, service_name, first_seen, last_seen, metadata_json) VALUES(?,?,?,?,?,?)",
+            ("app-2", "other", "api", "now", "now", "{}"),
+        )
+        rows = conn.execute("SELECT id, service_name FROM apps ORDER BY id").fetchall()
+
+    assert [row[0] for row in rows] == ["app-1", "app-2"]
 
 
 def make_client(tmp_path):

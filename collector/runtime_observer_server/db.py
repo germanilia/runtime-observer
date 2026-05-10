@@ -99,6 +99,20 @@ CREATE TABLE IF NOT EXISTS project_settings (
 """
 
 
+APP_COLUMNS = [
+    "id",
+    "project_name",
+    "service_name",
+    "display_name",
+    "language",
+    "runtime_version",
+    "sdk_version",
+    "first_seen",
+    "last_seen",
+    "metadata_json",
+]
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
@@ -110,19 +124,60 @@ class Database:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
         try:
+            self._apply_schema(conn)
             yield conn
             conn.commit()
         finally:
             conn.close()
 
     def initialize(self) -> None:
-        with self.connect() as conn:
-            conn.executescript(SCHEMA)
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(apps)").fetchall()}
-            if "project_name" not in columns:
-                conn.execute("ALTER TABLE apps ADD COLUMN project_name TEXT")
-            if "display_name" not in columns:
-                conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
+        with sqlite3.connect(self.path) as conn:
+            conn.row_factory = sqlite3.Row
+            self._apply_schema(conn)
+            conn.commit()
+
+    def _apply_schema(self, conn: sqlite3.Connection) -> None:
+        self._migrate_apps_unique_service_name(conn)
+        conn.executescript(SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(apps)").fetchall()}
+        if "project_name" not in columns:
+            conn.execute("ALTER TABLE apps ADD COLUMN project_name TEXT")
+        if "display_name" not in columns:
+            conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
+
+    def _migrate_apps_unique_service_name(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='apps'").fetchone()
+        create_sql = str(row[0]) if row and row[0] else ""
+        if "service_name TEXT NOT NULL UNIQUE" not in create_sql:
+            return
+
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(apps)").fetchall()}
+        select_parts = []
+        for column in APP_COLUMNS:
+            if column in columns:
+                select_parts.append(column)
+            elif column == "project_name":
+                select_parts.append("'default' AS project_name")
+            elif column == "display_name":
+                select_parts.append("service_name AS display_name")
+            else:
+                select_parts.append(f"NULL AS {column}")
+
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("ALTER TABLE apps RENAME TO apps_legacy_unique_service_name")
+        conn.execute(
+            """
+            CREATE TABLE apps (
+              id TEXT PRIMARY KEY, project_name TEXT, service_name TEXT NOT NULL, display_name TEXT, language TEXT,
+              runtime_version TEXT, sdk_version TEXT, first_seen TEXT NOT NULL,
+              last_seen TEXT NOT NULL, metadata_json TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"INSERT OR REPLACE INTO apps({', '.join(APP_COLUMNS)}) SELECT {', '.join(select_parts)} FROM apps_legacy_unique_service_name"
+        )
+        conn.execute("DROP TABLE apps_legacy_unique_service_name")
 
     def clear(self) -> None:
         tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences", "project_api_keys"]
