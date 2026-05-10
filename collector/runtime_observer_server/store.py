@@ -120,7 +120,13 @@ class CollectorStore:
         )
 
     def _route_values(self, payload: dict[str, Any]) -> tuple[str, str]:
-        return str(payload.get("method") or payload.get("http_method") or "UNKNOWN"), str(payload.get("route_pattern") or payload.get("route") or payload.get("path") or "unknown")
+        method = payload.get("method") or payload.get("http_method")
+        route_pattern = payload.get("route_pattern") or payload.get("route") or payload.get("path") or "unknown"
+        if not method and isinstance(payload.get("structured"), dict):
+            structured = payload["structured"]
+            method = structured.get("method") or structured.get("http_method")
+            route_pattern = route_pattern if route_pattern != "unknown" else structured.get("path") or structured.get("route_pattern") or structured.get("route") or "unknown"
+        return str(method or "UNKNOWN"), str(route_pattern)
 
     def _upsert_route(self, conn: sqlite3.Connection, app_id: str, method: str, route_pattern: str, timestamp: str) -> str:
         route_id = stable_id(app_id, method, route_pattern)

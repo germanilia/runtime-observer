@@ -6,7 +6,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse
 from .config import Settings
 from .dashboard import DASHBOARD_HTML
@@ -143,6 +143,32 @@ def generate_project_api_key() -> tuple[str, str]:
     key_id = secrets.token_hex(4)
     secret = secrets.token_urlsafe(24)
     return f"ro_{key_id}_{secret}", f"ro_{key_id}"
+
+def _delete_project(conn, project_name: str) -> dict[str, int]:
+    app_ids = [str(row["id"]) for row in conn.execute("SELECT id FROM apps WHERE project_name=?", (project_name,)).fetchall()]
+    deleted = {"apps": 0, "events": 0, "routes": 0, "logs": 0, "api_keys": 0}
+    if app_ids:
+        placeholders = ",".join("?" for _ in app_ids)
+        route_ids = [str(row["id"]) for row in conn.execute(f"SELECT id FROM routes WHERE app_id IN ({placeholders})", app_ids).fetchall()]
+        dependency_ids = [str(row["id"]) for row in conn.execute(f"SELECT id FROM dependencies WHERE app_id IN ({placeholders})", app_ids).fetchall()]
+        if route_ids:
+            route_placeholders = ",".join("?" for _ in route_ids)
+            conn.execute(f"DELETE FROM route_durations WHERE route_id IN ({route_placeholders})", route_ids)
+        if dependency_ids:
+            dep_placeholders = ",".join("?" for _ in dependency_ids)
+            conn.execute(f"DELETE FROM dependency_durations WHERE dependency_id IN ({dep_placeholders})", dependency_ids)
+        for table in ("events", "traces", "spans", "exceptions", "logs", "routes", "dependencies", "llm_usage"):
+            cursor = conn.execute(f"DELETE FROM {table} WHERE app_id IN ({placeholders})", app_ids)
+            if table in deleted:
+                deleted[table] = cursor.rowcount
+        cursor = conn.execute(f"DELETE FROM user_preferences WHERE project_name=? OR app_id IN ({placeholders})", [project_name, *app_ids])
+        deleted["preferences"] = cursor.rowcount
+        deleted["apps"] = conn.execute(f"DELETE FROM apps WHERE id IN ({placeholders})", app_ids).rowcount
+    else:
+        deleted["preferences"] = conn.execute("DELETE FROM user_preferences WHERE project_name=?", (project_name,)).rowcount
+    deleted["settings"] = conn.execute("DELETE FROM project_settings WHERE project_name=?", (project_name,)).rowcount
+    deleted["api_keys"] = conn.execute("DELETE FROM project_api_keys WHERE project_name=?", (project_name,)).rowcount
+    return deleted
 
 def _dependency_key_from_event(event: dict[str, Any]) -> tuple[str, str, str, str] | None:
     try:
@@ -376,6 +402,25 @@ def create_router() -> APIRouter:
                     (project_name,),
                 ).fetchall()
             )
+
+    @router.delete("/api/projects/{project_name}")
+    def delete_project(project_name: str, db: Database = Depends(get_db), user: dict[str, Any] = Depends(require_session)) -> dict[str, Any]:
+        if user.get("role") != "admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+        with db.connect() as conn:
+            exists = conn.execute(
+                """
+                SELECT 1 FROM apps WHERE project_name=?
+                UNION SELECT 1 FROM project_settings WHERE project_name=?
+                UNION SELECT 1 FROM project_api_keys WHERE project_name=?
+                LIMIT 1
+                """,
+                (project_name, project_name, project_name),
+            ).fetchone()
+            if not exists:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+            deleted = _delete_project(conn, project_name)
+        return {"status": "deleted", "project_name": project_name, "deleted": deleted}
 
     @router.post("/api/projects/{project_name}/api-keys")
     def create_project_api_key(project_name: str, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
@@ -773,7 +818,21 @@ def create_router() -> APIRouter:
                     break
             related_logs: list[dict[str, Any]] = []
             for event in (error_samples or samples)[:5]:
-                related_logs.extend(logs_around(conn, event.get("timestamp"), trace_id=event.get("trace_id"), window_seconds=30, limit=40))
+                tid = event.get("trace_id")
+                if tid:
+                    # exact trace match only — time-window proximity includes background jobs
+                    # (SQS pollers, image rebuilds, lock heartbeats) that are unrelated
+                    related_logs.extend(
+                        rows_to_dicts(
+                            conn.execute(
+                                "SELECT logs.*, apps.service_name FROM logs JOIN apps ON apps.id=logs.app_id"
+                                " WHERE logs.trace_id=? ORDER BY logs.timestamp LIMIT 40",
+                                (tid,),
+                            ).fetchall()
+                        )
+                    )
+                else:
+                    related_logs.extend(logs_around(conn, event.get("timestamp"), window_seconds=30, limit=40))
             by_id = {log.get("id"): log for log in related_logs if log.get("id")}
             return {"dependency": dependency, "samples": samples[:50], "error_samples": error_samples[:25], "related_logs": list(by_id.values())[:120]}
 

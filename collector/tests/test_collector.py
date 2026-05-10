@@ -133,6 +133,23 @@ def test_project_api_keys_scope_ingest_by_project(tmp_path):
     assert "api_key" not in keys[0]
 
 
+def test_delete_project_removes_telemetry_and_keys(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})
+    assert response.status_code == 200
+    login(client)
+    client.post("/api/projects/shop/api-keys")
+
+    response = client.delete("/api/projects/shop")
+    assert response.status_code == 200
+    assert response.json()["deleted"]["apps"] == 2
+
+    assert all(project["project_name"] != "shop" for project in client.get("/api/projects").json())
+    assert all(app["project_name"] != "shop" for app in client.get("/api/apps").json())
+    assert client.get("/api/projects/shop/api-keys").json() == []
+    assert client.delete("/api/projects/shop").status_code == 404
+
+
 def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
     client = make_client(tmp_path)
     response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})

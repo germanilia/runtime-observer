@@ -24,6 +24,7 @@ Dashboard routes require a session cookie unless insecure dev mode is enabled. T
 | `GET` | `/api/projects/{project_name}/api-keys` | List project API key metadata. Full key values are never returned. |
 | `POST` | `/api/projects/{project_name}/api-keys` | Generate a new project-scoped SDK API key. The full key is returned once. |
 | `DELETE` | `/api/projects/{project_name}/api-keys/{key_id}` | Revoke a project-scoped SDK API key. |
+| `DELETE` | `/api/projects/{project_name}` | Delete a project and all its telemetry (apps, events, routes, logs, traces, dependencies, and SDK keys). Requires admin role. |
 | `GET` | `/api/overview` | Global counts, recent logs, routes, errors, and dependencies. |
 | `GET` | `/api/apps/{app_id}/overview` | Per-application overview. |
 | `GET` | `/api/apps/{app_id}/routes` | Routes seen for an application. |
