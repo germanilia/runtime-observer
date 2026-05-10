@@ -22,7 +22,7 @@ Instrumented app → runtime_observer SDK → /v1/ingest → collector store →
 
 ## Collector responsibilities
 
-- Enforce API-key authentication for ingestion and basic auth for dashboard/API routes unless insecure dev mode is enabled.
+- Enforce project-scoped API-key authentication for ingestion and session-cookie auth for dashboard/API routes unless insecure dev mode is enabled. The first dashboard login bootstraps the admin user; SDK ingest keys are generated per project in the dashboard and stored hashed in SQLite.
 - Store raw redacted events plus query-optimized aggregates in SQLite.
 - Provide dashboard APIs for apps, routes, traces, logs, exceptions, dependencies, and agent context.
 - Apply retention cleanup during startup.
