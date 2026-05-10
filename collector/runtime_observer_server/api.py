@@ -340,14 +340,18 @@ def create_router() -> APIRouter:
             return rows_to_dicts(
                 conn.execute(
                     f"""
-                    WITH project_names AS (
-                      SELECT project_name FROM apps WHERE {clause}
-                      UNION
-                      SELECT project_name FROM project_settings
-                      UNION
-                      SELECT project_name FROM project_api_keys WHERE revoked_at IS NULL
+                    WITH project_sources AS (
+                      SELECT project_name, MIN(first_seen) created_at FROM apps WHERE {clause} GROUP BY project_name
+                      UNION ALL
+                      SELECT project_name, created_at FROM project_settings
+                      UNION ALL
+                      SELECT project_name, MIN(created_at) created_at FROM project_api_keys WHERE revoked_at IS NULL GROUP BY project_name
+                    ),
+                    project_names AS (
+                      SELECT project_name, MIN(created_at) created_at FROM project_sources GROUP BY project_name
                     )
                     SELECT project_names.project_name,
+                      project_names.created_at,
                       COUNT(DISTINCT apps.id) app_count,
                       MAX(apps.last_seen) last_seen,
                       COALESCE(SUM(routes.call_count), 0) request_count,
@@ -356,7 +360,7 @@ def create_router() -> APIRouter:
                     FROM project_names
                     LEFT JOIN apps ON apps.project_name=project_names.project_name
                     LEFT JOIN routes ON routes.app_id=apps.id
-                    GROUP BY project_names.project_name
+                    GROUP BY project_names.project_name, project_names.created_at
                     ORDER BY COALESCE(MAX(apps.last_seen), project_names.project_name) DESC
                     """,
                     params,
