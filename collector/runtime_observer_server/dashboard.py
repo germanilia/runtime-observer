@@ -10,6 +10,7 @@ DASHBOARD_HTML = r'''
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100vh;overflow:hidden}
 body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5}
+body.loading,body.loading *{cursor:wait!important}
 #app-shell{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 /* TOPBAR */
 .topbar{height:56px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border);z-index:20;position:relative}
@@ -138,7 +139,7 @@ th.sortable:hover{color:var(--text)}
 .trace-header{display:flex;align-items:flex-start;gap:8px;margin-bottom:3px}
 .trace-info{min-width:0;flex:1}
 .trace-code{font-size:12px;font-weight:700}
-.trace-route{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)}
+.trace-route{font-size:12px;font-weight:500;color:var(--text-muted);overflow-wrap:anywhere;word-break:break-word}
 .trace-meta{font-size:11px;color:var(--text-subtle)}
 .trace-ms{font-size:12px;font-weight:600;flex:none}
 .requests-detail{overflow-y:auto}
@@ -189,19 +190,21 @@ th.sortable:hover{color:var(--text)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .small{font-size:12px;color:var(--text-muted)}
 .copy-ok{color:var(--green)}
-pre{white-space:pre-wrap;word-break:break-word;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:360px;overflow:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:360px;overflow:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .responsive-table{width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);margin-bottom:12px}
 .responsive-table table{min-width:900px;border:0}
 .responsive-table th,.responsive-table td{vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
 .responsive-table .col-kind{width:150px;min-width:150px}
 .responsive-table .col-target{width:260px;min-width:260px}
 .responsive-table .col-ms{width:72px;min-width:72px;text-align:right}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px;color:var(--text-muted);font-size:12px}
+.pager .btn{font-size:12px;padding:4px 8px}
 .trace-toggle-panel.hidden-panel{display:none}
 .explain{padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);color:var(--text-muted);font-size:13px;margin-bottom:12px}
 .tabs-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .mapCanvas{min-height:320px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;padding:16px;overflow:auto;margin-bottom:12px}
 .nodeRow{display:flex;align-items:center;gap:10px;margin:10px 0}
-.node{min-width:160px;max-width:300px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px}
+.node{min-width:160px;max-width:520px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px;overflow-wrap:anywhere;word-break:break-word}
 .node.route{border-color:var(--primary)}
 .node.dep{border-color:var(--green)}
 .node.errorNode{border-color:var(--red)}
@@ -347,7 +350,7 @@ th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacin
 
       <!-- REQUESTS TAB -->
       <div class="tab-panel" id="panel-requests">
-        <div style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;height:100%">
+        <div style="display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:12px;height:100%">
           <div style="display:flex;flex-direction:column;gap:8px">
             <div class="small" style="padding:2px 0;font-weight:600;color:var(--text-muted)">Traces for selected route</div>
             <div id="traceList" class="trace-list"></div>
@@ -457,7 +460,9 @@ var errorSummary={totals:{},by_type:[],by_service:[]};
 var errorClusters=[];
 var errorTimeline=[];
 var metricsSeries=[];
-var tableSort={routes:{key:'p95_ms',dir:-1},logs:{key:'timestamp',dir:-1},deps:{key:'call_count',dir:-1},errors:{key:'count',dir:-1}};
+var tableSort={routes:{key:'p95_ms',dir:-1},logs:{key:'timestamp',dir:-1},deps:{key:'call_count',dir:-1},errors:{key:'count',dir:-1},errorTimeline:{key:'bucket',dir:-1}};
+var tablePages={routes:{page:1,size:20},deps:{page:1,size:20},errors:{page:1,size:20},errorTimeline:{page:1,size:12}};
+var loadingCount=0;
 var projects=[];
 var entries=[];
 var hiddenPrefs=[];
@@ -488,6 +493,11 @@ function fmtTs(v){
 function pretty(v){try{return JSON.stringify(typeof v==='string'?JSON.parse(v):v,null,2);}catch(e){return String(v??'');}}
 function sortRows(rows,name){var s=tableSort[name]||{key:'',dir:1};return rows.slice().sort(function(a,b){var av=a[s.key],bv=b[s.key];var na=Number(av),nb=Number(bv);if(Number.isFinite(na)&&Number.isFinite(nb))return (na-nb)*s.dir;return String(av||'').localeCompare(String(bv||''))*s.dir;});}
 function sortHeader(name,key,label){return '<th class="sortable" data-sort-table="'+name+'" data-sort-key="'+key+'">'+label+(tableSort[name]&&tableSort[name].key===key?(tableSort[name].dir>0?' ▲':' ▼'):'')+'</th>';}
+function pageState(name){return tablePages[name]||null;}
+function pagedRows(sorted,name){var p=pageState(name);if(!p)return sorted;var total=Math.max(1,Math.ceil(sorted.length/p.size));p.page=Math.min(Math.max(1,p.page),total);return sorted.slice((p.page-1)*p.size,p.page*p.size);}
+function pagerHtml(name,total){var p=pageState(name);if(!p||total<=p.size)return '';var pages=Math.max(1,Math.ceil(total/p.size));return '<div class="pager"><button class="btn" data-page-table="'+name+'" data-page-dir="-1" '+(p.page<=1?'disabled':'')+'>Prev</button><span>Page '+p.page+' of '+pages+' &bull; '+num(total)+' rows</span><button class="btn" data-page-table="'+name+'" data-page-dir="1" '+(p.page>=pages?'disabled':'')+'>Next</button></div>';}
+function setLoading(on){loadingCount=Math.max(0,loadingCount+(on?1:-1));document.body.classList.toggle('loading',loadingCount>0);}
+async function withLoading(fn){setLoading(true);try{return await fn();}finally{setLoading(false);}}
 function spark(rows,key,danger){var vals=rows.map(function(r){return Number(r[key]||0);});var max=Math.max(1,Math.max.apply(null,vals));return '<div class="spark">'+(vals.length?vals.slice(-24).map(function(v){return '<span class="spark-bar '+(danger?'err':'')+'" style="height:'+Math.max(3,v/max*36)+'px"></span>';}).join(''):'<span class="small">No recent data</span>')+'</div>';}
 
 // ── THEME TOGGLE ──
@@ -612,7 +622,7 @@ async function createProjectKey(name){
   $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" id="copyGeneratedKey" data-api-key="'+esc(data.api_key)+'">Copy API key</button><button class="btn" data-project-keys="'+esc(data.project_name)+'">Manage keys</button></div><div style="margin-top:12px"><div class="small" style="margin-bottom:4px">Project</div><pre>'+esc(data.project_name)+'</pre><div class="small" style="margin-bottom:4px;margin-top:8px">API key</div><pre class="mono">'+esc(data.api_key)+'</pre></div>';
   openDrawer();
   $('copyGeneratedKey').onclick=async function(){$('copyGeneratedKey').textContent=await copyText(data.api_key)?'Copied':'Copy failed';};
-  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){showProjectKeys(b.dataset.projectKeys);};});
+  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){withLoading(function(){return showProjectKeys(b.dataset.projectKeys);});};});
   await refresh();
 }
 async function showProjectKeys(name){
@@ -624,13 +634,15 @@ async function showProjectKeys(name){
   }).join(''):'<div class="empty-state">No SDK keys yet.</div>';
   $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-project-key="'+esc(name)+'">Generate new SDK key</button></div>'+keysHtml;
   openDrawer();
-  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){createProjectKey(b.dataset.projectKey);};});
+  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){withLoading(function(){return createProjectKey(b.dataset.projectKey);});};});
   document.querySelectorAll('[data-revoke-key]').forEach(function(b){
     b.onclick=async function(){
       if(confirm('Revoke this SDK key?')){
-        await api('/api/projects/'+encodeURIComponent(b.dataset.project)+'/api-keys/'+encodeURIComponent(b.dataset.revokeKey),{method:'DELETE'});
-        showProjectKeys(b.dataset.project);
-        refresh();
+        await withLoading(async function(){
+          await api('/api/projects/'+encodeURIComponent(b.dataset.project)+'/api-keys/'+encodeURIComponent(b.dataset.revokeKey),{method:'DELETE'});
+          await showProjectKeys(b.dataset.project);
+          await refresh();
+        });
       }
     };
   });
@@ -644,9 +656,9 @@ function renderProjects(){
   }).join(''):'<div class="empty-state" style="grid-column:1/-1"><p>No projects yet. Create an SDK key for the project name your app will send, configure the SDK, then exercise your app.</p><button class="btn btn-primary" onclick="createProjectKey(prompt(\'Project name\',\'default\')||\'default\')">Create first project SDK key</button></div>';
   $('projectCards').innerHTML=cards;
   document.querySelectorAll('[data-project-select]').forEach(function(b){b.onclick=function(){selectProject(b.dataset.projectSelect);};});
-  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){createProjectKey(b.dataset.projectKey);};});
-  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){showProjectKeys(b.dataset.projectKeys);};});
-  document.querySelectorAll('[data-project-delete]').forEach(function(b){b.onclick=function(){deleteProject(b.dataset.projectDelete);};});
+  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){withLoading(function(){return createProjectKey(b.dataset.projectKey);});};});
+  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){withLoading(function(){return showProjectKeys(b.dataset.projectKeys);});};});
+  document.querySelectorAll('[data-project-delete]').forEach(function(b){b.onclick=function(){withLoading(function(){return deleteProject(b.dataset.projectDelete);});};});
   $('projectScreen').classList.toggle('hidden',!!selectedProject);
   $('dashboardShell').classList.toggle('hidden',!selectedProject);
 }
@@ -666,7 +678,7 @@ function renderApps(){
       selectedTraceId=null;
       routeState=null;
       render();
-      refresh();
+      withLoading(refresh);
     };
   });
 }
@@ -697,12 +709,12 @@ function renderEntries(){
       +'<div class="route-item-actions"><button class="icon-btn" title="'+(r.hidden?'Restore':'Hide')+'" data-pref-action="'+(r.hidden?'restore':'hide')+'" data-pref-kind="route" data-pref-id="'+esc(r.id)+'" data-pref-app="'+esc(r.app_id)+'">'+eyeIcon+'</button></div>'
       +'</button>';
   }).join('');
-  document.querySelectorAll('[data-route]').forEach(function(b){b.onclick=function(){selectRoute(b.dataset.route);};});
+  document.querySelectorAll('[data-route]').forEach(function(b){b.onclick=function(){withLoading(function(){return selectRoute(b.dataset.route);});};});
   document.querySelectorAll('[data-pref-action]').forEach(function(b){
     b.onclick=async function(ev){
       ev.preventDefault();
       ev.stopPropagation();
-      await setHidden(b.dataset.prefKind,b.dataset.prefId,b.dataset.prefApp||null,b.dataset.prefAction==='hide');
+      await withLoading(function(){return setHidden(b.dataset.prefKind,b.dataset.prefId,b.dataset.prefApp||null,b.dataset.prefAction==='hide');});
     };
   });
 }
@@ -711,9 +723,14 @@ function renderEntries(){
 function renderSortableTable(id,name,columns,rows,empty){
   if(!rows.length){$(id).innerHTML='<div class="empty-state">'+esc(empty||'No data yet')+'</div>';return;}
   var sorted=sortRows(rows,name);
-  $(id).innerHTML='<div class="table-wrap"><table><thead><tr>'+columns.map(function(c){return sortHeader(name,c.key,c.label);}).join('')+'</tr></thead><tbody>'+sorted.map(function(r){return '<tr>'+columns.map(function(c){return '<td>'+esc(c.render?c.render(r):r[c.key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
+  var pageRows=pagedRows(sorted,name);
+  var start=pageState(name)?(pageState(name).page-1)*pageState(name).size:0;
+  $(id).innerHTML='<div class="table-wrap"><table><thead><tr>'+columns.map(function(c){return sortHeader(name,c.key,c.label);}).join('')+'</tr></thead><tbody>'+pageRows.map(function(r,i){return '<tr data-row-index="'+(start+i)+'">'+columns.map(function(c){return '<td>'+esc(c.render?c.render(r):r[c.key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>'+pagerHtml(name,sorted.length);
 }
-function wireSortTables(){document.querySelectorAll('[data-sort-table]').forEach(function(th){th.onclick=function(){var name=th.dataset.sortTable,key=th.dataset.sortKey;var cur=tableSort[name]||{};tableSort[name]={key:key,dir:cur.key===key?-cur.dir:1};render();};});}
+function wireSortTables(){
+  document.querySelectorAll('[data-sort-table]').forEach(function(th){th.onclick=function(){var name=th.dataset.sortTable,key=th.dataset.sortKey;var cur=tableSort[name]||{};tableSort[name]={key:key,dir:cur.key===key?-cur.dir:1};if(pageState(name))pageState(name).page=1;render();};});
+  document.querySelectorAll('[data-page-table]').forEach(function(btn){btn.onclick=function(){var p=pageState(btn.dataset.pageTable);if(!p)return;p.page+=Number(btn.dataset.pageDir||0);render();};});
+}
 function renderBars(id,rows,label,value,danger){
   var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r[value]||0);})));
   $(id).innerHTML=rows.length?rows.slice(0,12).map(function(r){
@@ -758,7 +775,7 @@ function renderInsights(routes,logs,errors,deps){
 // ── RENDER DEPENDENCIES ──
 function renderDependencies(rows){
   renderSortableTable('deps','deps',[{key:'display',label:'Dependency'},{key:'service_name',label:'Service'},{key:'call_count',label:'Calls'},{key:'error_count',label:'Errors'},{key:'p95_duration_ms',label:'p95 ms',render:function(r){return r.p95_duration_ms?Math.round(Number(r.p95_duration_ms)):'';}}],rows,'No dependency calls yet');
-  document.querySelectorAll('#deps tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){openDependency(sortRows(rows,'deps')[i]);};});
+  document.querySelectorAll('#deps tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){var dep=sortRows(rows,'deps')[Number(tr.dataset.rowIndex||0)];withLoading(function(){return openDependency(dep);});};});
   return;
   var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r.call_count||0);})));
   $('deps').innerHTML=rows.length?rows.slice(0,12).map(function(r){
@@ -778,13 +795,14 @@ function renderErrors(){
   var rows=visible(overview.recent_errors||[]);
   var clusters=visible(errorClusters||[]);
   renderSortableTable('errorClusters','errors',[{key:'type',label:'Type'},{key:'normalized_message',label:'Message',render:function(r){return String(r.normalized_message||'').slice(0,90);}},{key:'service_name',label:'Service'},{key:'route_pattern',label:'Route',render:function(r){return ((r.method||'')+' '+(r.route_pattern||'')).trim();}},{key:'count',label:'Count'},{key:'last_seen',label:'Last seen',render:function(r){return fmtTs(r.last_seen);}}],clusters,'No captured errors.');
-  document.querySelectorAll('#errorClusters tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){var e=sortRows(clusters,'errors')[i];openError(e.app_id,e.id);};});
-  $('errorTimeline').innerHTML=spark(errorTimeline,'count',true)+'<div class="small" style="margin-top:6px">'+num(errorTimeline.reduce(function(a,r){return a+Number(r.count||0);},0))+' exceptions in timeline window</div>';
+  document.querySelectorAll('#errorClusters tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){var e=sortRows(clusters,'errors')[Number(tr.dataset.rowIndex||0)];withLoading(function(){return openError(e.app_id,e.id);});};});
+  $('errorTimeline').innerHTML=spark(errorTimeline,'count',true)+'<div class="small" style="margin:6px 0 10px">'+num(errorTimeline.reduce(function(a,r){return a+Number(r.count||0);},0))+' exceptions in timeline window</div><div id="errorTimelineTable"></div>';
+  renderSortableTable('errorTimelineTable','errorTimeline',[{key:'bucket',label:'Time',render:function(r){return fmtTs(r.bucket);}},{key:'type',label:'Type'},{key:'project_name',label:'Project'},{key:'service_name',label:'Service'},{key:'count',label:'Count'}],errorTimeline,'No error timeline events.');
   $('errors').innerHTML=rows.length?rows.map(function(e){
     return '<button class="error-item" data-error="'+esc(e.app_id)+'|'+esc(e.id)+'"><div class="error-header"><span class="error-type">'+esc(e.type)+'</span><span class="pill" style="color:var(--red)">'+num(e.count)+'x</span></div><div class="error-msg">'+esc(e.normalized_message)+'</div><div class="error-meta">'+esc(e.service_name)+' &bull; '+esc(fmtTs(e.last_seen))+' &bull; trace '+esc(e.sample_trace_id||'none')+'</div></button>';
   }).join(''):'<div class="empty-state">No captured errors.</div>';
   document.querySelectorAll('[data-error]').forEach(function(b){
-    b.onclick=function(){var parts=b.dataset.error.split('|');openError(parts[0],parts[1]);};
+    b.onclick=function(){var parts=b.dataset.error.split('|');withLoading(function(){return openError(parts[0],parts[1]);});};
   });
 }
 
@@ -796,7 +814,7 @@ function logCopyLabel(logId){var s=logCopyState(logId);if(s==='ready')return 'Co
 function renderLogs(target,rows){
   if(target==='logs'){
     renderSortableTable(target,'logs',[{key:'timestamp',label:'Time',render:function(r){return fmtTs(r.timestamp);}},{key:'level',label:'Level'},{key:'service_name',label:'Service'},{key:'message',label:'Message',render:function(r){return String(r.message||'').slice(0,120);}},{key:'logger_name',label:'Logger'}],rows,'No logs found');
-    document.querySelectorAll('#logs tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){openLog(sortRows(rows,'logs')[i]);};});
+    document.querySelectorAll('#logs tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){withLoading(function(){return openLog(sortRows(rows,'logs')[Number(tr.dataset.rowIndex||0)]);});};});
     return;
   }
   $(target).innerHTML=rows.length?rows.map(function(l){
@@ -804,7 +822,7 @@ function renderLogs(target,rows){
     var level=l.level||'LOG';
     return '<div class="log-item" data-log=\''+esc(JSON.stringify(l))+'\'><div class="log-header"><span class="level-badge level-'+esc(level)+'">'+esc(level)+'</span>'+(l.service_name?'<span class="svc-badge" title="'+esc(l.service_name)+'">'+esc(l.service_name)+'</span>':'')+'<span class="small" style="margin-left:auto">'+esc(fmtTs(l.timestamp))+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="log-footer"><span class="small mono">'+esc(l.logger_name||'')+(l.trace_id?' &bull; trace '+esc(l.trace_id):'')+'</span><button class="btn" style="font-size:11px;padding:3px 8px" data-copy-log="'+esc(l.id)+'" '+(state==='ready'||state==='error'?'':'disabled')+'>'+logCopyLabel(l.id)+'</button></div></div>';
   }).join(''):'<div class="empty-state">No logs found</div>';
-  document.querySelectorAll('#'+target+' .log-item').forEach(function(el){el.onclick=function(){openLog(JSON.parse(el.dataset.log));};});
+  document.querySelectorAll('#'+target+' .log-item').forEach(function(el){el.onclick=function(){withLoading(function(){return openLog(JSON.parse(el.dataset.log));});};});
   document.querySelectorAll('#'+target+' [data-copy-log]').forEach(function(btn){
     prepareLogCopyBackground(btn.dataset.copyLog);
     btn.onclick=async function(ev){ev.preventDefault();ev.stopPropagation();await copyLog(btn.dataset.copyLog,btn);};
@@ -839,7 +857,7 @@ function renderTraceList(){
     var ok=Number(t.status_code||200)<400;
     return '<button class="trace-item'+(selectedTraceId===t.id?' active':'')+'" data-trace="'+esc(t.id)+'"><div class="trace-header"><span class="trace-status '+(ok?'ok':'err')+'"></span><div class="trace-info"><span class="trace-code '+(ok?'':'level-ERROR')+'">'+esc(t.status_code||'')+'</span> <span class="trace-route">'+esc(t.route_pattern)+'</span></div><span class="trace-ms">'+Math.round(Number(t.duration_ms||0))+'ms</span></div><div class="trace-meta">'+esc(t.service_name)+' &bull; '+esc(fmtTs(t.finished_at||t.started_at))+' &bull; '+num(t.log_count)+' logs</div></button>';
   }).join(''):'<div class="empty-state">No request traces for this route yet.</div>';
-  document.querySelectorAll('[data-trace]').forEach(function(b){b.onclick=function(){openTraceMap(b.dataset.trace);};});
+  document.querySelectorAll('[data-trace]').forEach(function(b){b.onclick=function(){withLoading(function(){return openTraceMap(b.dataset.trace);});};});
   renderLogs('routeLogs',selectedTraceLogs());
 }
 
@@ -1172,14 +1190,14 @@ async function openError(appId,id){
 }
 
 // ── WIRE UP EVENT LISTENERS ──
-$('refreshBtn').onclick=refresh;
+$('refreshBtn').onclick=function(){withLoading(refresh);};
 $('refreshInterval').onchange=function(e){setRefreshIntervalMs(e.target.value);};
-$('logWindow').onchange=function(e){logWindowMinutes=Number(e.target.value);localStorage.setItem('runtimeObserverLogWindowMinutes',String(logWindowMinutes));refresh();};
+$('logWindow').onchange=function(e){logWindowMinutes=Number(e.target.value);localStorage.setItem('runtimeObserverLogWindowMinutes',String(logWindowMinutes));withLoading(refresh);};
 $('logSource').onchange=function(e){logSource=e.target.value;applyLocalLogFilters();};
 syncLogWindowSelect();
-$('searchBtn').onclick=searchLogs;
-$('level').onchange=searchLogs;
-$('logSearch').onkeydown=function(e){if(e.key==='Enter')searchLogs();};
+$('searchBtn').onclick=function(){withLoading(searchLogs);};
+$('level').onchange=function(){withLoading(searchLogs);};
+$('logSearch').onkeydown=function(e){if(e.key==='Enter')withLoading(searchLogs);};
 $('logSearch').oninput=applyLocalLogFilters;
 $('routeSearch').oninput=function(e){routeSearchQuery=e.target.value;applyRouteSearch();};
 $('showHiddenBtn').onclick=function(){showHidden=!showHidden;renderEntries();};
@@ -1198,7 +1216,7 @@ document.addEventListener('click',function(ev){
   var logBtn=ev.target.closest('[data-copy-log]');
   if(logBtn){ev.preventDefault();ev.stopPropagation();copyLog(logBtn.dataset.copyLog,logBtn);return;}
   var openTraceBtn=ev.target.closest('[data-open-trace]');
-  if(openTraceBtn){ev.preventDefault();ev.stopPropagation();openTraceMap(openTraceBtn.dataset.openTrace);return;}
+  if(openTraceBtn){ev.preventDefault();ev.stopPropagation();withLoading(function(){return openTraceMap(openTraceBtn.dataset.openTrace);});return;}
   var viewBtn=ev.target.closest('[data-trace-view]');
   if(viewBtn){
     ev.preventDefault();ev.stopPropagation();
@@ -1211,8 +1229,8 @@ document.addEventListener('click',function(ev){
 
 // ── EXPOSE GLOBALS NEEDED BY INLINE ONCLICK HANDLERS ──
 window.backToProjects = backToProjects;
-window.createProjectKey = createProjectKey;
-window.openTraceMap = openTraceMap;
+window.createProjectKey = function(name){return withLoading(function(){return createProjectKey(name);});};
+window.openTraceMap = function(traceId){return withLoading(function(){return openTraceMap(traceId);});};
 
 // ── INIT ──
 checkAuth().then(function(ok){
