@@ -11,6 +11,14 @@ from .config import RuntimeObserverConfig
 from .context import get_current_context
 from .redaction import redact_mapping, redact_string
 
+_LEVEL_NUMBERS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
 _internal = threading.local()
 
 
@@ -54,6 +62,19 @@ class RuntimeObserverLoggingHandler(logging.Handler):
         self.emit_log = observer_or_emit if self.observer is None else None
         self.config = config or getattr(observer_or_emit, "config", RuntimeObserverConfig())
         self.rate_limiter = LogRateLimiter(self.config.log_rate_limit_per_minute)
+        self._sync_handler_level()
+
+    def update_target(self, observer_or_emit, config: RuntimeObserverConfig) -> None:
+        self.observer = observer_or_emit if hasattr(observer_or_emit, "emit_event") else None
+        self.emit_log = observer_or_emit if self.observer is None else None
+        self.config = config
+        self.rate_limiter = LogRateLimiter(self.config.log_rate_limit_per_minute)
+        self._sync_handler_level()
+
+    def _sync_handler_level(self) -> None:
+        levels = [_LEVEL_NUMBERS[level] for level in self.config.log_levels if level in _LEVEL_NUMBERS]
+        if levels:
+            self.setLevel(min(levels))
 
     def emit(self, record: logging.LogRecord) -> None:
         if is_internal_logging() or (record.name == "runtime_observer" or record.name.startswith("runtime_observer.")):
@@ -102,10 +123,13 @@ def build_log_payload(record: logging.LogRecord, config: RuntimeObserverConfig) 
 
 
 def attach_stdlib_logging(emit_log, config: RuntimeObserverConfig) -> RuntimeObserverLoggingHandler:
-    handler = RuntimeObserverLoggingHandler(emit_log, config)
     root = logging.getLogger()
-    if not any(isinstance(existing, RuntimeObserverLoggingHandler) for existing in root.handlers):
-        root.addHandler(handler)
+    for existing in root.handlers:
+        if isinstance(existing, RuntimeObserverLoggingHandler):
+            existing.update_target(emit_log, config)
+            return existing
+    handler = RuntimeObserverLoggingHandler(emit_log, config)
+    root.addHandler(handler)
     return handler
 
 

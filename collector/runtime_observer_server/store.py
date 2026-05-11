@@ -79,11 +79,92 @@ class CollectorStore:
                     rejected += 1
         return {"accepted": accepted, "rejected": rejected, "server_time": now_iso()}
 
-    def cleanup(self, retention_days: int) -> None:
-        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat().replace("+00:00", "Z")
+    def cleanup(self, retention_days: int, *, min_log_minutes: int = 60, exception_window_minutes: int = 180) -> None:
         with self.database.connect() as conn:
-            for table in ["events", "logs", "route_durations", "dependency_durations"]:
-                conn.execute(f"DELETE FROM {table} WHERE timestamp < ?", (cutoff,))
+            stored = self._stored_retention_settings(conn)
+            retention_days = int(stored.get("retention_days", retention_days))
+            min_log_minutes = int(stored.get("min_log_minutes", min_log_minutes))
+            exception_window_minutes = int(stored.get("exception_window_minutes", exception_window_minutes))
+            now = datetime.now(UTC)
+            cutoff = (now - timedelta(days=retention_days)).isoformat().replace("+00:00", "Z")
+            log_floor = (now - timedelta(minutes=max(min_log_minutes, 60))).isoformat().replace("+00:00", "Z")
+            self._prepare_retention_protection(conn, now, exception_window_minutes)
+            conn.execute(
+                """
+                DELETE FROM logs
+                WHERE timestamp < ? AND timestamp < ?
+                  AND id NOT IN (SELECT id FROM protected_logs)
+                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                """,
+                (cutoff, log_floor),
+            )
+            conn.execute(
+                """
+                DELETE FROM events
+                WHERE timestamp < ?
+                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                """,
+                (cutoff,),
+            )
+            conn.execute("DELETE FROM route_durations WHERE timestamp < ?", (cutoff,))
+            conn.execute("DELETE FROM dependency_durations WHERE timestamp < ?", (cutoff,))
+            conn.execute(
+                """
+                DELETE FROM spans
+                WHERE COALESCE(finished_at, started_at) < ?
+                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                """,
+                (cutoff,),
+            )
+            conn.execute(
+                """
+                DELETE FROM traces
+                WHERE COALESCE(finished_at, started_at) < ?
+                  AND COALESCE(id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                """,
+                (cutoff,),
+            )
+
+    def _stored_retention_settings(self, conn: sqlite3.Connection) -> dict[str, Any]:
+        row = conn.execute("SELECT value_json FROM collector_settings WHERE key='retention'").fetchone()
+        if not row:
+            return {}
+        try:
+            data = json.loads(row["value_json"] or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _prepare_retention_protection(self, conn: sqlite3.Connection, now: datetime, exception_window_minutes: int) -> None:
+        conn.execute("DROP TABLE IF EXISTS protected_traces")
+        conn.execute("DROP TABLE IF EXISTS protected_logs")
+        conn.execute("CREATE TEMP TABLE protected_traces(trace_id TEXT PRIMARY KEY)")
+        conn.execute("CREATE TEMP TABLE protected_logs(id TEXT PRIMARY KEY)")
+        for row in conn.execute("SELECT sample_trace_id, last_seen FROM exceptions").fetchall():
+            trace_id = row["sample_trace_id"]
+            if trace_id:
+                conn.execute("INSERT OR IGNORE INTO protected_traces(trace_id) VALUES(?)", (trace_id,))
+            seen = self._parse_iso(row["last_seen"])
+            if seen:
+                start = (seen - timedelta(minutes=exception_window_minutes)).isoformat().replace("+00:00", "Z")
+                end = (seen + timedelta(minutes=exception_window_minutes)).isoformat().replace("+00:00", "Z")
+                for log in conn.execute("SELECT id FROM logs WHERE timestamp BETWEEN ? AND ?", (start, end)).fetchall():
+                    conn.execute("INSERT OR IGNORE INTO protected_logs(id) VALUES(?)", (log["id"],))
+        now_iso_value = now.isoformat().replace("+00:00", "Z")
+        for pin in conn.execute("SELECT trace_id, start_time, end_time FROM retention_pins WHERE expires_at IS NULL OR expires_at > ?", (now_iso_value,)).fetchall():
+            if pin["trace_id"]:
+                conn.execute("INSERT OR IGNORE INTO protected_traces(trace_id) VALUES(?)", (pin["trace_id"],))
+            if pin["start_time"] and pin["end_time"]:
+                for log in conn.execute("SELECT id FROM logs WHERE timestamp BETWEEN ? AND ?", (pin["start_time"], pin["end_time"])).fetchall():
+                    conn.execute("INSERT OR IGNORE INTO protected_logs(id) VALUES(?)", (log["id"],))
+
+    def _parse_iso(self, value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     def _ingest_one(self, conn: sqlite3.Connection, event: dict[str, Any]) -> None:
         if not isinstance(event, dict) or "kind" not in event:
@@ -184,7 +265,7 @@ class CollectorStore:
             """
             INSERT INTO exceptions(id, app_id, fingerprint, type, normalized_message, first_seen, last_seen, count, sample_trace_id, sample_payload_json)
             VALUES(?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(app_id, fingerprint) DO UPDATE SET last_seen=excluded.last_seen, count=count + 1, sample_trace_id=excluded.sample_trace_id
+            ON CONFLICT(app_id, fingerprint) DO UPDATE SET last_seen=excluded.last_seen, count=exceptions.count + 1, sample_trace_id=excluded.sample_trace_id
             """,
             (exception_id, app_id, fingerprint, exc_type, message, timestamp, timestamp, 1, event.get("trace_id"), dumps(payload)),
         )
@@ -221,9 +302,9 @@ class CollectorStore:
             """
             INSERT INTO llm_usage(id, app_id, provider, model, route_id, call_count, input_tokens, output_tokens, error_count, total_duration_ms)
             VALUES(?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(app_id, provider, model, route_id) DO UPDATE SET call_count=call_count+1,
-              input_tokens=input_tokens+excluded.input_tokens, output_tokens=output_tokens+excluded.output_tokens,
-              error_count=error_count+excluded.error_count, total_duration_ms=total_duration_ms+excluded.total_duration_ms
+            ON CONFLICT(app_id, provider, model, route_id) DO UPDATE SET call_count=llm_usage.call_count+1,
+              input_tokens=llm_usage.input_tokens+excluded.input_tokens, output_tokens=llm_usage.output_tokens+excluded.output_tokens,
+              error_count=llm_usage.error_count+excluded.error_count, total_duration_ms=llm_usage.total_duration_ms+excluded.total_duration_ms
             """,
             (usage_id, app_id, provider, model, route_id, 1, int(payload.get("input_tokens") or 0), int(payload.get("output_tokens") or 0), int(bool(payload.get("error"))), float(payload.get("duration_ms") or 0)),
         )
@@ -235,7 +316,7 @@ class CollectorStore:
         avg = float(current["avg_duration_ms"]) if current else 0
         new_avg = ((avg * count) + duration) / (count + 1) if duration else avg
         conn.execute(
-            "INSERT INTO dependencies(id, app_id, dependency_type, target, operation, call_count, error_count, avg_duration_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(app_id, dependency_type, target, operation) DO UPDATE SET call_count=call_count+1, error_count=error_count+excluded.error_count, avg_duration_ms=excluded.avg_duration_ms",
+            "INSERT INTO dependencies(id, app_id, dependency_type, target, operation, call_count, error_count, avg_duration_ms) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(app_id, dependency_type, target, operation) DO UPDATE SET call_count=dependencies.call_count+1, error_count=dependencies.error_count+excluded.error_count, avg_duration_ms=excluded.avg_duration_ms",
             (dep_id, app_id, dep_type, target, operation, 1, int(error), new_avg),
         )
         if duration:

@@ -21,7 +21,7 @@ def _drain(observer):
 
 def test_fastapi_requests_routes_and_logs():
     app = FastAPI()
-    observer = init_runtime_observer(service_name="fastapi-test", enabled=True, insecure_local_dev=True, capture_logs=False)
+    observer = init_runtime_observer(project_name="test", service_name="fastapi-test", enabled=True, insecure_local_dev=True, capture_logs=False)
     observer.exporter.shutdown(timeout=0.1)
 
     @app.get("/items/{item_id}")
@@ -43,7 +43,7 @@ def test_fastapi_requests_routes_and_logs():
 
 def test_fastapi_exception_event_contains_stack():
     app = FastAPI()
-    observer = init_runtime_observer(service_name="fastapi-test", enabled=True, insecure_local_dev=True, capture_logs=False)
+    observer = init_runtime_observer(project_name="test", service_name="fastapi-test", enabled=True, insecure_local_dev=True, capture_logs=False)
     observer.exporter.shutdown(timeout=0.1)
 
     @app.get("/boom")

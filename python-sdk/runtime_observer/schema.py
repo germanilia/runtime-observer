@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import platform
-import sys
 import traceback
 import uuid
 from typing import Any
@@ -78,7 +77,7 @@ class EventBuilder:
 
     def service(self) -> dict[str, str]:
         service = {
-            "project_name": self.config.project_name or "default",
+            "project_name": self.config.project_name or "",
             "name": self.config.service_name or "python-service",
             "language": "python",
             "runtime_version": platform.python_version(),

@@ -106,7 +106,7 @@ body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,syst
 .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
 .card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .card-title{font-size:13px;font-weight:600;color:var(--text)}
-.card-body{padding:14px 16px}
+.card-body{padding:14px 16px;min-width:0;overflow-wrap:anywhere}
 /* BARS */
 .bar-row{display:grid;grid-template-columns:minmax(80px,160px) 1fr 60px;gap:10px;align-items:center;padding:4px 0}
 .bar-label{font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)}
@@ -116,6 +116,16 @@ body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,syst
 .bar-val{font-size:12px;font-weight:600;text-align:right;color:var(--text-muted)}
 /* OVERVIEW GRID */
 .overview-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}
+.insight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.insight-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
+.insight-value{font-size:20px;font-weight:800;margin-top:3px}
+.spark{height:38px;display:flex;align-items:end;gap:2px;margin-top:8px}
+.spark-bar{flex:1;min-width:3px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--primary),var(--blue));opacity:.85}
+.spark-bar.err{background:linear-gradient(180deg,var(--red),var(--yellow))}
+.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--text)}
 /* REQUESTS SPLIT */
 .requests-split{display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;height:100%}
 .trace-list{height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
@@ -139,7 +149,7 @@ body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,syst
 .log-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s}
 .log-item:hover{border-color:var(--primary)}
 .log-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.log-body{font-size:13px;margin-bottom:4px}
+.log-body{font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
 .log-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .level-badge{font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px}
 .level-ERROR,.level-CRITICAL{background:var(--red-muted);color:var(--red)}
@@ -154,11 +164,11 @@ body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,syst
 .error-msg{font-size:13px;color:var(--text-muted);margin-bottom:4px}
 .error-meta{font-size:11px;color:var(--text-subtle)}
 /* DEPENDENCIES */
-.dep-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s}
+.dep-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s;min-width:0;overflow-wrap:anywhere}
 .dep-card:hover{border-color:var(--green)}
-.dep-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-.dep-name{font-size:13px;font-weight:600}
-.dep-sql{font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dep-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;min-width:0}
+.dep-name{font-size:13px;font-weight:600;overflow-wrap:anywhere;min-width:0}
+.dep-sql{font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted);margin-top:4px;white-space:normal;overflow-wrap:anywhere}
 .dep-error{font-size:11px;color:var(--red);margin-top:2px}
 /* PILL / BADGE */
 .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:99px;font-size:11px;color:var(--text-muted)}
@@ -166,18 +176,27 @@ body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,syst
 /* DRAWER */
 #drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39;display:none}
 #drawerOverlay.open{display:block}
-.drawer{position:fixed;right:0;top:0;bottom:0;width:min(960px,96vw);background:var(--bg);border-left:1px solid var(--border);box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;z-index:40;display:flex;flex-direction:column}
+.drawer{position:fixed;right:0;top:0;bottom:0;width:min(1240px,98vw);background:var(--bg);border-left:1px solid var(--border);box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;z-index:40;display:flex;flex-direction:column}
 .drawer.open{transform:translateX(0)}
+.drawer.fullscreen{left:0;width:100vw;border-left:none}
 .drawer-top{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex:none}
 .drawer-title-wrap{min-width:0;flex:1}
-.drawer-title{font-size:16px;font-weight:700}
-.drawer-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+.drawer-title{font-size:16px;font-weight:700;overflow-wrap:anywhere}
+.drawer-sub{font-size:12px;color:var(--text-muted);margin-top:2px;overflow-wrap:anywhere}
+.drawer-actions{display:flex;gap:8px;flex:none}
 .drawer-body{padding:18px;overflow-y:auto;flex:1}
 /* MISC */
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .small{font-size:12px;color:var(--text-muted)}
 .copy-ok{color:var(--green)}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:360px;overflow:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.responsive-table{width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);margin-bottom:12px}
+.responsive-table table{min-width:900px;border:0}
+.responsive-table th,.responsive-table td{vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+.responsive-table .col-kind{width:150px;min-width:150px}
+.responsive-table .col-target{width:260px;min-width:260px}
+.responsive-table .col-ms{width:72px;min-width:72px;text-align:right}
+.trace-toggle-panel.hidden-panel{display:none}
 .explain{padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);color:var(--text-muted);font-size:13px;margin-bottom:12px}
 .tabs-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .mapCanvas{min-height:320px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;padding:16px;overflow:auto;margin-bottom:12px}
@@ -263,8 +282,13 @@ th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacin
 <!-- PROJECT SCREEN -->
 <div id="projectScreen" style="flex:1;overflow-y:auto;padding:24px">
   <div class="project-screen-header">
-    <div class="project-screen-title">Projects</div>
-    <div class="project-screen-sub">Select a project to inspect traces and telemetry</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="project-screen-title">Projects</div>
+        <div class="project-screen-sub">Select a project to inspect traces and telemetry</div>
+      </div>
+      <button class="btn btn-primary" onclick="createProjectKey(prompt('Project name','default')||'default')">Create project SDK key</button>
+    </div>
   </div>
   <div id="projectCards" class="project-grid"></div>
 </div>
@@ -306,6 +330,7 @@ th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacin
       <!-- OVERVIEW TAB -->
       <div class="tab-panel active" id="panel-overview">
         <div id="kpis" class="kpi-row"></div>
+        <div id="insights" class="insight-grid"></div>
         <div class="overview-grid">
           <div class="card">
             <div class="card-header"><span class="card-title">Route Performance</span><span class="pill">p95 latency</span></div>
@@ -370,7 +395,10 @@ th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacin
 
       <!-- ERRORS TAB -->
       <div class="tab-panel" id="panel-errors">
-        <div id="errors"></div>
+        <div class="overview-grid">
+          <div class="card"><div class="card-header"><span class="card-title">Error clusters</span><span class="pill">grouped by fingerprint</span></div><div class="card-body" id="errorClusters"></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">Error timeline</span><span class="pill">24h</span></div><div class="card-body"><div id="errorTimeline"></div><div id="errors" style="margin-top:12px"></div></div></div>
+        </div>
       </div>
 
       <!-- DEPENDENCIES TAB -->
@@ -396,9 +424,14 @@ th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacin
       <div id="drawerTitle" class="drawer-title">Detail</div>
       <div id="drawerSub" class="drawer-sub"></div>
     </div>
-    <button id="closeBtn" class="icon-btn" aria-label="Close drawer">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
+    <div class="drawer-actions">
+      <button id="drawerFullscreenBtn" class="icon-btn" aria-label="Toggle fullscreen drawer" title="Toggle fullscreen">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <button id="closeBtn" class="icon-btn" aria-label="Close drawer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
   </div>
   <div id="drawerBody" class="drawer-body"></div>
 </div>
@@ -420,6 +453,11 @@ window.updateThemeIcon=updateThemeIcon;
 
 // ── STATE ──
 var overview={apps:[],totals:{},routes:[],dependencies:[],recent_logs:[],recent_errors:[],event_kinds:[],log_levels:[]};
+var errorSummary={totals:{},by_type:[],by_service:[]};
+var errorClusters=[];
+var errorTimeline=[];
+var metricsSeries=[];
+var tableSort={routes:{key:'p95_ms',dir:-1},logs:{key:'timestamp',dir:-1},deps:{key:'call_count',dir:-1},errors:{key:'count',dir:-1}};
 var projects=[];
 var entries=[];
 var hiddenPrefs=[];
@@ -448,6 +486,9 @@ function fmtTs(v){
   return Number.isFinite(d.getTime())?d.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}):String(v);
 }
 function pretty(v){try{return JSON.stringify(typeof v==='string'?JSON.parse(v):v,null,2);}catch(e){return String(v??'');}}
+function sortRows(rows,name){var s=tableSort[name]||{key:'',dir:1};return rows.slice().sort(function(a,b){var av=a[s.key],bv=b[s.key];var na=Number(av),nb=Number(bv);if(Number.isFinite(na)&&Number.isFinite(nb))return (na-nb)*s.dir;return String(av||'').localeCompare(String(bv||''))*s.dir;});}
+function sortHeader(name,key,label){return '<th class="sortable" data-sort-table="'+name+'" data-sort-key="'+key+'">'+label+(tableSort[name]&&tableSort[name].key===key?(tableSort[name].dir>0?' ▲':' ▼'):'')+'</th>';}
+function spark(rows,key,danger){var vals=rows.map(function(r){return Number(r[key]||0);});var max=Math.max(1,Math.max.apply(null,vals));return '<div class="spark">'+(vals.length?vals.slice(-24).map(function(v){return '<span class="spark-bar '+(danger?'err':'')+'" style="height:'+Math.max(3,v/max*36)+'px"></span>';}).join(''):'<span class="small">No recent data</span>')+'</div>';}
 
 // ── THEME TOGGLE ──
 function toggleTheme(){
@@ -502,6 +543,18 @@ function filterLogSource(rows){
   if(logSource==='client')return rows.filter(function(l){return (l.service_name||'').includes('frontend')||String(l.logger_name||'').startsWith('browser.');});
   if(logSource==='backend')return rows.filter(function(l){return (l.service_name||'').includes('backend');});
   return rows;
+}
+function currentLogRows(){
+  var rows=filterLogSource(visible(overview.recent_logs||[]));
+  var level=$('level')&&$('level').value;
+  if(level)rows=rows.filter(function(l){return String(l.level||'').toUpperCase()===level;});
+  return rows;
+}
+function applyLocalLogFilters(){
+  var q=($('logSearch').value||'').toLowerCase();
+  var rows=currentLogRows();
+  var filtered=q?rows.filter(function(l){return (l.message||'').toLowerCase().includes(q)||(l.service_name||'').toLowerCase().includes(q);}):rows;
+  renderLogs('logs',filtered);
 }
 function dependencyLabel(dep){
   if(dep.dependency_type==='db')return ('DB '+(dep.target||'unknown')+' '+(dep.operation||'')).trim().slice(0,120);
@@ -613,6 +666,7 @@ function renderApps(){
       selectedTraceId=null;
       routeState=null;
       render();
+      refresh();
     };
   });
 }
@@ -654,6 +708,12 @@ function renderEntries(){
 }
 
 // ── RENDER BARS ──
+function renderSortableTable(id,name,columns,rows,empty){
+  if(!rows.length){$(id).innerHTML='<div class="empty-state">'+esc(empty||'No data yet')+'</div>';return;}
+  var sorted=sortRows(rows,name);
+  $(id).innerHTML='<div class="table-wrap"><table><thead><tr>'+columns.map(function(c){return sortHeader(name,c.key,c.label);}).join('')+'</tr></thead><tbody>'+sorted.map(function(r){return '<tr>'+columns.map(function(c){return '<td>'+esc(c.render?c.render(r):r[c.key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
+}
+function wireSortTables(){document.querySelectorAll('[data-sort-table]').forEach(function(th){th.onclick=function(){var name=th.dataset.sortTable,key=th.dataset.sortKey;var cur=tableSort[name]||{};tableSort[name]={key:key,dir:cur.key===key?-cur.dir:1};render();};});}
 function renderBars(id,rows,label,value,danger){
   var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r[value]||0);})));
   $(id).innerHTML=rows.length?rows.slice(0,12).map(function(r){
@@ -682,8 +742,24 @@ function renderMix(){
   renderBars('levelBars',levels,'label','value',true);
 }
 
+// ── RENDER INSIGHTS ──
+function renderInsights(routes,logs,errors,deps){
+  var reqSeries=metricsSeries.reduce(function(a,r){return a+Number(r.requests||0);},0);
+  var errSeries=metricsSeries.reduce(function(a,r){return a+Number(r.request_errors||0)+Number(r.error_logs||0)+Number(r.exceptions||0);},0);
+  var slow=routes.slice().sort(function(a,b){return Number(b.p95_ms||0)-Number(a.p95_ms||0);})[0];
+  var noisy=logs.reduce(function(m,l){var k=l.service_name||'unknown';m[k]=(m[k]||0)+1;return m;},{});
+  var noisyName=Object.keys(noisy).sort(function(a,b){return noisy[b]-noisy[a];})[0]||'—';
+  $('insights').innerHTML='<div class="insight-card"><div class="insight-title">Traffic trend</div><div class="insight-value">'+num(reqSeries)+'</div>'+spark(metricsSeries,'requests',false)+'</div>'+
+    '<div class="insight-card"><div class="insight-title">Error signals</div><div class="insight-value" style="color:var(--red)">'+num(errSeries)+'</div>'+spark(metricsSeries,'error_logs',true)+'</div>'+
+    '<div class="insight-card"><div class="insight-title">Slowest route</div><div class="insight-value">'+esc(slow?Math.round(Number(slow.p95_ms||0))+'ms':'—')+'</div><div class="small mono">'+esc(slow?(slow.method+' '+slow.route_pattern):'No route latency')+'</div></div>'+
+    '<div class="insight-card"><div class="insight-title">Noisiest service</div><div class="insight-value">'+esc(noisyName)+'</div><div class="small">'+num(noisy[noisyName]||0)+' logs in selected window</div></div>';
+}
+
 // ── RENDER DEPENDENCIES ──
 function renderDependencies(rows){
+  renderSortableTable('deps','deps',[{key:'display',label:'Dependency'},{key:'service_name',label:'Service'},{key:'call_count',label:'Calls'},{key:'error_count',label:'Errors'},{key:'p95_duration_ms',label:'p95 ms',render:function(r){return r.p95_duration_ms?Math.round(Number(r.p95_duration_ms)):'';}}],rows,'No dependency calls yet');
+  document.querySelectorAll('#deps tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){openDependency(sortRows(rows,'deps')[i]);};});
+  return;
   var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r.call_count||0);})));
   $('deps').innerHTML=rows.length?rows.slice(0,12).map(function(r){
     var sample=r.last_sample||{};
@@ -700,6 +776,10 @@ function renderDependencies(rows){
 // ── RENDER ERRORS ──
 function renderErrors(){
   var rows=visible(overview.recent_errors||[]);
+  var clusters=visible(errorClusters||[]);
+  renderSortableTable('errorClusters','errors',[{key:'type',label:'Type'},{key:'normalized_message',label:'Message',render:function(r){return String(r.normalized_message||'').slice(0,90);}},{key:'service_name',label:'Service'},{key:'route_pattern',label:'Route',render:function(r){return ((r.method||'')+' '+(r.route_pattern||'')).trim();}},{key:'count',label:'Count'},{key:'last_seen',label:'Last seen',render:function(r){return fmtTs(r.last_seen);}}],clusters,'No captured errors.');
+  document.querySelectorAll('#errorClusters tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){var e=sortRows(clusters,'errors')[i];openError(e.app_id,e.id);};});
+  $('errorTimeline').innerHTML=spark(errorTimeline,'count',true)+'<div class="small" style="margin-top:6px">'+num(errorTimeline.reduce(function(a,r){return a+Number(r.count||0);},0))+' exceptions in timeline window</div>';
   $('errors').innerHTML=rows.length?rows.map(function(e){
     return '<button class="error-item" data-error="'+esc(e.app_id)+'|'+esc(e.id)+'"><div class="error-header"><span class="error-type">'+esc(e.type)+'</span><span class="pill" style="color:var(--red)">'+num(e.count)+'x</span></div><div class="error-msg">'+esc(e.normalized_message)+'</div><div class="error-meta">'+esc(e.service_name)+' &bull; '+esc(fmtTs(e.last_seen))+' &bull; trace '+esc(e.sample_trace_id||'none')+'</div></button>';
   }).join(''):'<div class="empty-state">No captured errors.</div>';
@@ -714,6 +794,11 @@ function logCopyLabel(logId){var s=logCopyState(logId);if(s==='ready')return 'Co
 
 // ── RENDER LOGS ──
 function renderLogs(target,rows){
+  if(target==='logs'){
+    renderSortableTable(target,'logs',[{key:'timestamp',label:'Time',render:function(r){return fmtTs(r.timestamp);}},{key:'level',label:'Level'},{key:'service_name',label:'Service'},{key:'message',label:'Message',render:function(r){return String(r.message||'').slice(0,120);}},{key:'logger_name',label:'Logger'}],rows,'No logs found');
+    document.querySelectorAll('#logs tbody tr').forEach(function(tr,i){tr.style.cursor='pointer';tr.onclick=function(){openLog(sortRows(rows,'logs')[i]);};});
+    return;
+  }
   $(target).innerHTML=rows.length?rows.map(function(l){
     var state=logCopyState(l.id);
     var level=l.level||'LOG';
@@ -787,7 +872,7 @@ function render(){
   renderApps();
   renderEntries();
   var routes=visible(overview.routes||[]);
-  var allLogs=filterLogSource(visible(overview.recent_logs||[]));
+  var allLogs=currentLogRows();
   var errors=visible(overview.recent_errors||[]);
   var deps=visible(overview.dependencies||[]).map(function(d){return Object.assign({},d,{display:dependencyLabel(d)});});
   var totalReq=selectedApp==='all'?overview.totals.request_count:routes.reduce(function(a,r){return a+Number(r.call_count||0);},0);
@@ -800,12 +885,14 @@ function render(){
   $('tabCountErrors').textContent=errors.length;
   $('tabCountDeps').textContent=deps.length;
   // Tab content
-  renderBars('routes',routes,'route_pattern','p95_ms',false);
+  renderInsights(routes,allLogs,errors,deps);
+  renderSortableTable('routes','routes',[{key:'method',label:'Method'},{key:'route_pattern',label:'Route'},{key:'service_name',label:'Service'},{key:'call_count',label:'Calls'},{key:'error_count',label:'Errors'},{key:'p95_ms',label:'p95 ms',render:function(r){return Math.round(Number(r.p95_ms||0));}},{key:'last_seen',label:'Last seen',render:function(r){return fmtTs(r.last_seen);}}],routes,'No routes yet');
   renderMix();
   renderErrors();
   renderDependencies(deps);
   renderLogs('logs',allLogs);
   renderTraceList();
+  wireSortTables();
   // Sync log source select
   var ls=$('logSource');if(ls)ls.value=logSource;
 }
@@ -833,13 +920,19 @@ async function refresh(){
   if(isRefreshing)return;
   isRefreshing=true;
   try{
+    var scope=selectedProject?'&project_name='+encodeURIComponent(selectedProject):'';
+    var appScope=selectedApp&&selectedApp!=='all'?'&app_id='+encodeURIComponent(selectedApp):'';
     var results=await Promise.all([
       api('/api/overview?'+logWindowQuery()),
       api('/api/projects'),
       api('/api/entrypoints?include_hidden=true'),
-      api('/api/preferences/hidden')
+      api('/api/preferences/hidden'),
+      api('/api/errors/summary?log_window_minutes='+encodeURIComponent(logWindowMinutes)+scope+appScope),
+      api('/api/errors/clusters?limit=100'+scope+appScope),
+      api('/api/errors/timeline?window_minutes=1440&bucket_minutes=60'+scope+appScope),
+      api('/api/metrics/timeseries?window_minutes=1440&bucket_minutes=60'+scope+appScope)
     ]);
-    overview=results[0];projects=results[1];entries=results[2];hiddenPrefs=results[3];
+    overview=results[0];projects=results[1];entries=results[2];hiddenPrefs=results[3];errorSummary=results[4];errorClusters=results[5];errorTimeline=results[6];metricsSeries=results[7];
     if(selectedProject&&!projects.some(function(p){return p.project_name===selectedProject;})){selectedProject='';}
     $('liveText').textContent=refreshLabel()+' &bull; logs '+(logWindowMinutes?'last '+logWindowMinutes+'m':'all retained')+' &bull; updated '+new Date().toLocaleTimeString();
     if(selectedRouteId)await loadRoute(selectedRouteId,false);
@@ -859,7 +952,7 @@ async function searchLogs(){
   var level=encodeURIComponent($('level').value);
   var start=encodeURIComponent(logWindowStartParam());
   var rows=await api('/api/logs?text='+q+'&level='+level+'&start='+start+'&limit=1000');
-  renderLogs('logs',selectedApp==='all'?rows:rows.filter(function(r){return r.app_id===selectedApp;}));
+  renderLogs('logs',filterLogSource(visible(rows)));
 }
 
 // ── DRAWER ──
@@ -870,6 +963,9 @@ function openDrawer(){
 function closeDrawer(){
   $('drawer').classList.remove('open');
   $('drawerOverlay').classList.remove('open');
+}
+function toggleDrawerFullscreen(){
+  $('drawer').classList.toggle('fullscreen');
 }
 
 // ── COPY HELPERS ──
@@ -1023,6 +1119,24 @@ function renderMap(data){
   exceptions.forEach(function(e){nodes.push('<div class="nodeRow"><div class="arrow-line"></div><div class="node errorNode"><div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">EXCEPTION</div><div style="font-size:12px;font-weight:600">'+esc(e.type)+'</div><div class="small">'+esc(e.normalized_message)+'</div></div></div>');});
   return '<div class="mapCanvas">'+(nodes.length?nodes.join(''):'<div class="empty-state">No map nodes for this trace yet.</div>')+'</div>';
 }
+function dependencyTarget(p){return p.target||p.host||p.database||p.model||(Array.isArray(p.tables)?p.tables.join(', '):'');}
+function dependencyOperation(p){return p.rendered_statement||p.statement_template||p.statement_fingerprint||p.operation||p.method||p.request_body_preview||p.provider||'';}
+function renderDependencyDetails(deps){
+  var rows=(deps||[]).map(function(d){
+    var p=eventPayload(d), params=p.parameters||p.params||'';
+    return '<tr><td class="col-kind">'+esc(d.kind||'dependency')+'</td><td class="col-target">'+esc(dependencyTarget(p)||'dependency')+'</td><td class="mono">'+esc(dependencyOperation(p))+(params?'<div class="small mono" style="margin-top:6px">params: '+esc(String(params).slice(0,500))+'</div>':'')+'</td><td class="col-ms">'+(p.duration_ms?Math.round(Number(p.duration_ms)):'')+'</td></tr>';
+  }).join('');
+  if(!rows)return '<div class="empty-state">No dependency calls captured for this request.</div>';
+  return '<div class="responsive-table"><table><thead><tr><th class="col-kind">kind</th><th class="col-target">target</th><th>operation / input</th><th class="col-ms">ms</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function renderRawTimeline(items){
+  items=(items||[]).slice(0,160);
+  return items.map(function(item){var ts=item.timestamp||item.started_at||item.finished_at||'';var kind=item.kind||item.type||'event';return '<details style="margin-bottom:4px"><summary style="cursor:pointer;padding:6px 10px;border-radius:6px 6px 0 0;border:1px solid var(--border);background:var(--surface);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;list-style:none;display:flex;gap:10px;align-items:center"><span style="color:var(--text-subtle);flex:none">'+esc(ts?new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3}):'—')+'</span><span style="color:var(--primary);flex:none">'+esc(kind)+'</span><span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+esc(item.message||item.name||item.route_pattern||item.target||item.operation||'')+'</span></summary><pre style="margin:0 0 0;border-radius:0 0 6px 6px;border:1px solid var(--border);border-top:none">'+esc(JSON.stringify(item,null,2))+'</pre></details>';}).join('')||'<div class="empty-state">No timeline events</div>';
+}
+function renderTraceViewToggle(hasGrouped){
+  if(!hasGrouped)return '';
+  return '<div class="tabs-row"><button class="btn btn-primary" data-trace-view="grouped">Grouped map</button><button class="btn" data-trace-view="raw">Raw timeline</button></div>';
+}
 
 async function openTraceMap(traceId){
   selectedTraceId=traceId;
@@ -1039,11 +1153,10 @@ async function openTraceMap(traceId){
   var backgroundHtml=backgroundLogs.slice(0,80).map(function(l){
     return '<div class="log-item"><div class="log-header"><span class="level-badge level-'+esc(l.level)+'">'+esc(l.level||'LOG')+'</span><span class="small">'+esc(l.service_name)+' &bull; '+esc(fmtTs(l.timestamp))+' &bull; '+(l.trace_id?'other trace':'background/no trace')+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="small mono">'+esc(l.logger_name||'')+(l.source_function?' &bull; '+esc(l.source_function):'')+'</div></div>';
   }).join('');
-  var depRows=(data.dependencies||[]).map(function(d){
-    var p=eventPayload(d);
-    return '<tr><td>'+esc(d.kind)+'</td><td>'+esc(p.target||p.host||(Array.isArray(p.tables)?p.tables.join(', '):''))+'</td><td class="mono">'+esc((p.rendered_statement||p.statement_template||p.statement_fingerprint||p.operation||p.method||p.request_body_preview||'').slice(0,420))+(p.parameters?'<div class="small mono">params: '+esc(String(p.parameters).slice(0,240))+'</div>':'')+'</td><td>'+(p.duration_ms?Math.round(Number(p.duration_ms)):'')+'</td></tr>';
-  }).join('');
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-trace="'+esc(traceId)+'">Copy full trace for AI</button><span id="copyStatus" class="small copy-ok">Preparing copy context...</span><span class="pill">'+data.traces.length+' route</span><span class="pill">'+data.spans.length+' spans</span><span class="pill">'+data.dependencies.length+' deps</span><span class="pill">'+flowLogs.length+' exact logs</span><span class="pill">'+data.exceptions.length+' errors</span></div><div class="explain">Only exact trace-id events are shown in the causal flow. Cron jobs, SQS pollers, and background tasks run independently with no trace id and are separated as nearby background activity.</div>'+renderMap(Object.assign({},data,{logs:flowLogs}))+'<h3 style="margin:14px 0 8px">Dependency details + inputs</h3><pre>'+(depRows?'<table><thead><tr><th>kind</th><th>target</th><th>operation/input</th><th>ms</th></tr></thead><tbody>'+depRows+'</tbody></table>':'No dependency calls captured for this request.')+'</pre><h3 style="margin:14px 0 8px">Exact flow logs</h3><div>'+logsHtml+'</div><h3 style="margin:14px 0 8px">Raw causal timeline</h3>'+(function(){var items=(data.timeline||data.events).slice(0,160);return items.map(function(item){var ts=item.timestamp||item.started_at||item.finished_at||'';var kind=item.kind||item.type||'event';return '<details style="margin-bottom:4px"><summary style="cursor:pointer;padding:6px 10px;border-radius:6px 6px 0 0;border:1px solid var(--border);background:var(--surface);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;list-style:none;display:flex;gap:10px;align-items:center"><span style="color:var(--text-subtle);flex:none">'+esc(ts?new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3}):'—')+'</span><span style="color:var(--primary);flex:none">'+esc(kind)+'</span><span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+esc(item.message||item.name||item.route_pattern||item.target||item.operation||'')+'</span></summary><pre style="margin:0 0 0;border-radius:0 0 6px 6px;border:1px solid var(--border);border-top:none">'+esc(JSON.stringify(item,null,2))+'</pre></details>';}).join('')||'<div class="empty-state">No timeline events</div>';})()+'<br><details style="margin-top:12px"><summary class="small" style="cursor:pointer;padding:4px 0">Nearby background activity ('+backgroundLogs.length+')</summary><div class="explain" style="margin-top:8px">These logs happened around the same time but have no matching trace_id.</div><div>'+(backgroundHtml||'<div class="empty-state">No nearby background logs.</div>')+'</div></details>';
+  var hasGrouped=!!(data.flow&&Array.isArray(data.flow.nodes)&&data.flow.nodes.length);
+  var groupedMap=renderMap(Object.assign({},data,{logs:flowLogs}));
+  var rawTimeline=renderRawTimeline(data.timeline||data.events);
+  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-trace="'+esc(traceId)+'">Copy full trace for AI</button><span id="copyStatus" class="small copy-ok">Preparing copy context...</span><span class="pill">'+data.traces.length+' route</span><span class="pill">'+data.spans.length+' spans</span><span class="pill">'+data.dependencies.length+' deps</span><span class="pill">'+flowLogs.length+' exact logs</span><span class="pill">'+data.exceptions.length+' errors</span></div><div class="explain">Only exact trace-id events are shown in the causal flow. Cron jobs, SQS pollers, and background tasks run independently with no trace id and are separated as nearby background activity.</div>'+renderTraceViewToggle(hasGrouped)+'<div id="groupedTraceView" class="trace-toggle-panel">'+groupedMap+'</div><div id="rawTraceView" class="trace-toggle-panel hidden-panel"><h3 style="margin:0 0 8px">Raw causal timeline</h3>'+rawTimeline+'</div><h3 style="margin:14px 0 8px">Dependency details + inputs</h3>'+renderDependencyDetails(data.dependencies||[])+'<h3 style="margin:14px 0 8px">Exact flow logs</h3><div>'+logsHtml+'</div>'+(hasGrouped?'':'<h3 style="margin:14px 0 8px">Raw causal timeline</h3>'+rawTimeline)+'<br><details style="margin-top:12px"><summary class="small" style="cursor:pointer;padding:4px 0">Nearby background activity ('+backgroundLogs.length+')</summary><div class="explain" style="margin-top:8px">These logs happened around the same time but have no matching trace_id.</div><div>'+(backgroundHtml||'<div class="empty-state">No nearby background logs.</div>')+'</div></details>';
   openDrawer();
   prepareCopy('trace:'+traceId,'/api/traces/'+encodeURIComponent(traceId)+'/agent-context','Ready to copy trace context');
 }
@@ -1062,19 +1175,16 @@ async function openError(appId,id){
 $('refreshBtn').onclick=refresh;
 $('refreshInterval').onchange=function(e){setRefreshIntervalMs(e.target.value);};
 $('logWindow').onchange=function(e){logWindowMinutes=Number(e.target.value);localStorage.setItem('runtimeObserverLogWindowMinutes',String(logWindowMinutes));refresh();};
-$('logSource').onchange=function(e){logSource=e.target.value;render();};
+$('logSource').onchange=function(e){logSource=e.target.value;applyLocalLogFilters();};
 syncLogWindowSelect();
 $('searchBtn').onclick=searchLogs;
+$('level').onchange=searchLogs;
 $('logSearch').onkeydown=function(e){if(e.key==='Enter')searchLogs();};
-$('logSearch').oninput=function(e){
-  var q=e.target.value.toLowerCase();
-  var rows=filterLogSource(visible(overview.recent_logs||[]));
-  var filtered=q?rows.filter(function(l){return (l.message||'').toLowerCase().includes(q)||(l.service_name||'').toLowerCase().includes(q);}):rows;
-  renderLogs('logs',filtered);
-};
+$('logSearch').oninput=applyLocalLogFilters;
 $('routeSearch').oninput=function(e){routeSearchQuery=e.target.value;applyRouteSearch();};
 $('showHiddenBtn').onclick=function(){showHidden=!showHidden;renderEntries();};
 $('closeBtn').onclick=closeDrawer;
+$('drawerFullscreenBtn').onclick=toggleDrawerFullscreen;
 $('drawerOverlay').onclick=closeDrawer;
 $('loginForm').onsubmit=loginSubmit;
 $('logoutBtn').onclick=logout;
@@ -1088,7 +1198,15 @@ document.addEventListener('click',function(ev){
   var logBtn=ev.target.closest('[data-copy-log]');
   if(logBtn){ev.preventDefault();ev.stopPropagation();copyLog(logBtn.dataset.copyLog,logBtn);return;}
   var openTraceBtn=ev.target.closest('[data-open-trace]');
-  if(openTraceBtn){ev.preventDefault();ev.stopPropagation();openTraceMap(openTraceBtn.dataset.openTrace);}
+  if(openTraceBtn){ev.preventDefault();ev.stopPropagation();openTraceMap(openTraceBtn.dataset.openTrace);return;}
+  var viewBtn=ev.target.closest('[data-trace-view]');
+  if(viewBtn){
+    ev.preventDefault();ev.stopPropagation();
+    var showRaw=viewBtn.dataset.traceView==='raw';
+    if($('groupedTraceView'))$('groupedTraceView').classList.toggle('hidden-panel',showRaw);
+    if($('rawTraceView'))$('rawTraceView').classList.toggle('hidden-panel',!showRaw);
+    document.querySelectorAll('[data-trace-view]').forEach(function(btn){btn.classList.toggle('btn-primary',btn===viewBtn);});
+  }
 });
 
 // ── EXPOSE GLOBALS NEEDED BY INLINE ONCLICK HANDLERS ──

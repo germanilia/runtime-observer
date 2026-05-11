@@ -5,7 +5,7 @@ Runtime Observer is a lightweight telemetry contract, Python SDK, and local coll
 ## Repository layout
 
 - `python-sdk/` — importable `runtime_observer` SDK and instrumentation helpers.
-- `collector/` — FastAPI collector and local HTML dashboard backed by SQLite.
+- `collector/` — FastAPI collector and local HTML dashboard backed by SQLite or PostgreSQL.
 - `schemas/` — shared JSON Schema contract plus validated event examples.
 - `examples/python-fastapi-minimal/` — minimal FastAPI app instrumented with the SDK.
 - `docs/` — integration, architecture, API, deployment, and development notes.
@@ -45,18 +45,22 @@ Copy `.env.example` to `.env` and replace placeholder secrets for non-local use.
 
 Important settings:
 
-- `RUNTIME_OBSERVER_SECRETS` — path to `secrets.yml`; the SQLite connection string lives there.
+- `RUNTIME_OBSERVER_SECRETS` — path to `secrets.yml`; the database connection string lives there.
+- `RUNTIME_OBSERVER_DATABASE_URL` — override the database URL directly (SQLite path or `postgres://…` URL); takes precedence over `secrets.yml`.
 - `RUNTIME_OBSERVER_ENDPOINT` — SDK collector base URL, for example `http://127.0.0.1:4319`.
-- `RUNTIME_OBSERVER_PROJECT_NAME` — project shown on the post-login project selection screen.
+- `RUNTIME_OBSERVER_PROJECT_NAME` — project shown on the post-login project selection screen. **Required** for SDK export to be enabled.
 - `RUNTIME_OBSERVER_SERVICE_NAME` — app/service name inside the project.
 - `RUNTIME_OBSERVER_API_KEY` — project SDK key generated in the dashboard and stored hashed in the DB.
 - `RUNTIME_OBSERVER_INSECURE_DEV` — disables auth only for local development.
+- `RUNTIME_OBSERVER_RETENTION_DAYS` — days of raw event data to keep (default `7`). Also configurable via `PUT /api/settings`.
+- `RUNTIME_OBSERVER_RETENTION_MIN_LOG_MINUTES` — minimum recency window for logs preserved during cleanup (default `60`).
+- `RUNTIME_OBSERVER_RETENTION_EXCEPTION_WINDOW_MINUTES` — logs within this window around an exception are pinned during cleanup (default `180`).
 
 ## Documentation
 
 - [`docs/integration.md`](docs/integration.md) — GitHub installation, collector setup, FastAPI/logging/dependency/browser ingestion, dashboard usage, preferences, and troubleshooting.
 - [`docs/api.md`](docs/api.md) — ingestion, dashboard, query, and agent tool APIs.
-- [`docs/deployment.md`](docs/deployment.md) — local process, Docker Compose, and security checklist.
+- [`docs/deployment.md`](docs/deployment.md) — local process, Docker Compose, EC2 deployment, and security checklist.
 
 ## Commands
 
@@ -66,6 +70,7 @@ Important settings:
 - `just run` — run the local collector with live reload on port 4319, killing any existing listener on that port first.
 - `just run-collector` — alias for `just run`.
 - `just run-example` — run the minimal FastAPI example.
+- `just deploy-ec2 [ENVIRONMENT]` — deploy the collector to EC2 behind an ALB (default environment: `sela`).
 - `just setup-hooks` — configure `.githooks/pre-push`.
 
 ## Git hooks

@@ -110,6 +110,14 @@ def parse_ts(value: str | None) -> datetime | None:
 def iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
+
+def scalar(row: object, key: str | None = None) -> object:
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row.get(key or next(iter(row)))
+    return row[0]  # type: ignore[index]
+
 def current_user(user: dict[str, Any] = Depends(require_session)) -> str:
     return str(user["id"])
 
@@ -139,10 +147,81 @@ def log_window_start(log_window_minutes: int | None) -> str | None:
         return None
     return iso(datetime.now(UTC) - timedelta(minutes=log_window_minutes))
 
+
+def scoped_apps_filter(user_id: str, *, project_name: str | None = None, app_id: str | None = None, alias: str = "apps") -> tuple[str, list[Any]]:
+    clause, params = visible_apps_clause(user_id, alias)
+    parts = [clause]
+    if project_name:
+        parts.append(f"{alias}.project_name=?")
+        params.append(project_name)
+    if app_id:
+        parts.append(f"{alias}.id=?")
+        params.append(app_id)
+    return " AND ".join(parts), params
+
+def time_bucket(column: str, bucket_minutes: int, *, is_postgres: bool = False) -> str:
+    bucket_seconds = max(60, min(bucket_minutes, 1440) * 60)
+    if is_postgres:
+        return (
+            "to_char(to_timestamp((floor(extract(epoch from "
+            f"{column}::timestamptz) / {bucket_seconds}) * {bucket_seconds})) "
+            "AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
+        )
+    return f"strftime('%Y-%m-%dT%H:%M:%SZ', (CAST(strftime('%s', {column}) AS INTEGER) / {bucket_seconds}) * {bucket_seconds}, 'unixepoch')"
+
+
+def json_text(column: str, key: str, *, is_postgres: bool = False) -> str:
+    if is_postgres:
+        return f"({column}::jsonb ->> '{key}')"
+    return f"json_extract({column}, '$.{key}')"
+
 def generate_project_api_key() -> tuple[str, str]:
     key_id = secrets.token_hex(4)
     secret = secrets.token_urlsafe(24)
     return f"ro_{key_id}_{secret}", f"ro_{key_id}"
+
+RETENTION_SETTING_KEY = "retention"
+
+
+def default_retention_settings(settings: Settings) -> dict[str, int]:
+    return {
+        "retention_days": settings.retention_days,
+        "min_log_minutes": settings.retention_min_log_minutes,
+        "exception_window_minutes": settings.retention_exception_window_minutes,
+    }
+
+
+def read_retention_settings(conn, settings: Settings) -> dict[str, int]:
+    values = default_retention_settings(settings)
+    row = conn.execute("SELECT value_json FROM collector_settings WHERE key=?", (RETENTION_SETTING_KEY,)).fetchone()
+    if row:
+        try:
+            stored = json.loads(row["value_json"] or "{}")
+        except json.JSONDecodeError:
+            stored = {}
+        for key in values:
+            if key in stored:
+                try:
+                    values[key] = int(stored[key])
+                except (TypeError, ValueError):
+                    continue
+    return values
+
+
+def validate_retention_settings(body: dict[str, Any], settings: Settings) -> dict[str, int]:
+    values = default_retention_settings(settings)
+    aliases = {"retention_days": "retention_days", "days": "retention_days", "min_log_minutes": "min_log_minutes", "exception_window_minutes": "exception_window_minutes"}
+    for source, target in aliases.items():
+        if source in body:
+            try:
+                values[target] = int(body[source])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail=f"{target} must be an integer") from None
+    limits = {"retention_days": (1, 3650), "min_log_minutes": (60, 10080), "exception_window_minutes": (0, 10080)}
+    for key, (minimum, maximum) in limits.items():
+        if values[key] < minimum or values[key] > maximum:
+            raise HTTPException(status_code=422, detail=f"{key} must be between {minimum} and {maximum}")
+    return values
 
 def _delete_project(conn, project_name: str) -> dict[str, int]:
     app_ids = [str(row["id"]) for row in conn.execute("SELECT id FROM apps WHERE project_name=?", (project_name,)).fetchall()]
@@ -216,6 +295,167 @@ def enrich_dependencies(conn, dependencies: list[dict[str, Any]]) -> list[dict[s
             dep["last_sample"] = sample
     return dependencies
 
+def _payload_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        payload = json.loads(row.get("payload_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _duration_from_payload(payload: dict[str, Any]) -> float | None:
+    for key in ("duration_ms", "duration"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _dependency_signature(event: dict[str, Any]) -> dict[str, Any]:
+    payload = _payload_from_row(event)
+    kind = str(event.get("kind") or "unknown")
+    if kind == "db_query":
+        tables = payload.get("tables") if isinstance(payload.get("tables"), list) else []
+        return {
+            "type": "db",
+            "target": str(payload.get("target") or payload.get("database") or payload.get("table") or (tables[0] if tables else None) or "unknown-db"),
+            "operation": str(payload.get("operation") or payload.get("statement_fingerprint") or payload.get("query_fingerprint") or "query"),
+        }
+    if kind == "http_client_call":
+        return {"type": "http", "target": str(payload.get("host") or payload.get("url") or "unknown"), "operation": str(payload.get("method") or "GET")}
+    if kind == "llm_call":
+        return {"type": "llm", "target": str(payload.get("provider") or "unknown"), "operation": str(payload.get("model") or "unknown")}
+    return {"type": kind, "target": "unknown", "operation": kind}
+
+
+def build_dependency_groups(dependencies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for event in dependencies:
+        signature = _dependency_signature(event)
+        key = (signature["type"], signature["target"], signature["operation"])
+        payload = _payload_from_row(event)
+        duration_ms = _duration_from_payload(payload)
+        group = grouped.setdefault(
+            key,
+            {
+                "id": stable_id("dependency_group", *key),
+                "dependency_type": signature["type"],
+                "target": signature["target"],
+                "operation": signature["operation"],
+                "count": 0,
+                "event_ids": [],
+                "span_ids": [],
+                "first_timestamp": event.get("timestamp"),
+                "last_timestamp": event.get("timestamp"),
+                "total_duration_ms": 0.0,
+                "max_duration_ms": None,
+            },
+        )
+        group["count"] += 1
+        group["event_ids"].append(event.get("id"))
+        if event.get("span_id") and event.get("span_id") not in group["span_ids"]:
+            group["span_ids"].append(event.get("span_id"))
+        if event.get("timestamp"):
+            group["first_timestamp"] = min(str(group["first_timestamp"] or event["timestamp"]), str(event["timestamp"]))
+            group["last_timestamp"] = max(str(group["last_timestamp"] or event["timestamp"]), str(event["timestamp"]))
+        if duration_ms is not None:
+            group["total_duration_ms"] += duration_ms
+            group["max_duration_ms"] = duration_ms if group["max_duration_ms"] is None else max(float(group["max_duration_ms"]), duration_ms)
+    return sorted(grouped.values(), key=lambda item: (-int(item["count"]), str(item["dependency_type"]), str(item["target"]), str(item["operation"])))
+
+
+def build_relationship_loader_groups(dependencies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for event in dependencies:
+        if event.get("kind") != "db_query":
+            continue
+        payload = _payload_from_row(event)
+        signature = _dependency_signature(event)
+        relationship = payload.get("relationship") or payload.get("relationship_name") or payload.get("orm_relationship")
+        model = payload.get("model") or payload.get("entity") or payload.get("orm_model") or payload.get("source_model")
+        loader_strategy = payload.get("loader_strategy") or payload.get("load_strategy") or ("lazy" if payload.get("lazy_load") else None)
+        if not any([relationship, model, loader_strategy]) and not payload.get("statement_fingerprint") and not payload.get("query_fingerprint"):
+            continue
+        key = (str(model or "unknown-model"), str(relationship or signature["target"]), str(loader_strategy or "unknown-loader"), str(signature["operation"]))
+        duration_ms = _duration_from_payload(payload)
+        group = grouped.setdefault(
+            key,
+            {
+                "id": stable_id("relationship_loader_group", *key),
+                "model": key[0],
+                "relationship": key[1],
+                "loader_strategy": key[2],
+                "operation": key[3],
+                "count": 0,
+                "event_ids": [],
+                "span_ids": [],
+                "total_duration_ms": 0.0,
+                "suspected_n_plus_one": False,
+            },
+        )
+        group["count"] += 1
+        group["event_ids"].append(event.get("id"))
+        if event.get("span_id") and event.get("span_id") not in group["span_ids"]:
+            group["span_ids"].append(event.get("span_id"))
+        if duration_ms is not None:
+            group["total_duration_ms"] += duration_ms
+    for group in grouped.values():
+        group["suspected_n_plus_one"] = int(group["count"]) >= 3 and str(group["loader_strategy"]).lower() in {"lazy", "select", "unknown-loader"}
+    return sorted(grouped.values(), key=lambda item: (-int(item["count"]), str(item["model"]), str(item["relationship"])))
+
+
+def build_duplicate_candidates(dependencies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates = []
+    for group in build_dependency_groups(dependencies):
+        if int(group["count"]) < 2:
+            continue
+        candidates.append(
+            {
+                "id": stable_id("duplicate_candidate", group["dependency_type"], group["target"], group["operation"]),
+                "dependency_type": group["dependency_type"],
+                "target": group["target"],
+                "operation": group["operation"],
+                "count": group["count"],
+                "event_ids": group["event_ids"],
+                "span_ids": group["span_ids"],
+                "total_duration_ms": group["total_duration_ms"],
+                "reason": "same dependency signature repeated within trace",
+            }
+        )
+    return candidates
+
+
+def build_slow_gap_markers(timeline: list[dict[str, Any]], traces: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    points = [(parse_ts(str(item.get("timestamp"))), item) for item in timeline if item.get("timestamp")]
+    points = [(ts, item) for ts, item in points if ts is not None]
+    if len(points) < 2:
+        return []
+    trace_duration = max((float(trace.get("duration_ms") or 0) for trace in traces), default=0.0)
+    threshold_ms = max(100.0, min(500.0, trace_duration * 0.2 if trace_duration else 500.0))
+    markers: list[dict[str, Any]] = []
+    for (prev_ts, prev_item), (next_ts, next_item) in zip(points, points[1:]):
+        gap_ms = (next_ts - prev_ts).total_seconds() * 1000
+        if gap_ms >= threshold_ms:
+            markers.append(
+                {
+                    "id": stable_id("slow_gap", prev_item.get("id"), next_item.get("id"), gap_ms),
+                    "gap_ms": gap_ms,
+                    "threshold_ms": threshold_ms,
+                    "from_timestamp": iso(prev_ts),
+                    "to_timestamp": iso(next_ts),
+                    "from_event_id": prev_item.get("id"),
+                    "to_event_id": next_item.get("id"),
+                    "from_kind": prev_item.get("kind"),
+                    "to_kind": next_item.get("kind"),
+                }
+            )
+    return markers
+
+
 def logs_around(conn, timestamp: str | None, *, trace_id: str | None = None, window_seconds: int = 120, limit: int = 250) -> list[dict[str, Any]]:
     where: list[str] = []
     params: list[Any] = []
@@ -253,7 +493,7 @@ def create_router() -> APIRouter:
         now = iso(datetime.now(UTC))
         expires_at = iso(datetime.now(UTC) + timedelta(days=SESSION_DAYS))
         with db.connect() as conn:
-            user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            user_count = scalar(conn.execute("SELECT COUNT(*) AS count FROM users").fetchone(), "count")
             if user_count == 0:
                 user_id = uuid.uuid4().hex
                 conn.execute(
@@ -307,6 +547,30 @@ def create_router() -> APIRouter:
             raise HTTPException(status_code=422, detail="events must be a list")
         require_ingest_auth(events, request, api_key=api_key, db=db, settings=settings)
         return request.app.state.store.ingest(events)
+
+    @router.get("/api/settings")
+    def get_collector_settings(db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        with db.connect() as conn:
+            retention = read_retention_settings(conn, settings)
+        return {"retention": retention}
+
+    @router.put("/api/settings")
+    async def put_collector_settings(request: Request, db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="settings body must be an object")
+        retention_body = body.get("retention") if isinstance(body.get("retention"), dict) else body
+        retention = validate_retention_settings(retention_body, settings)
+        timestamp = now_iso()
+        with db.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO collector_settings(key, value_json, updated_at, updated_by) VALUES(?,?,?,?)
+                ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+                """,
+                (RETENTION_SETTING_KEY, json.dumps(retention, separators=(",", ":")), timestamp, user_id),
+            )
+        return {"retention": retention}
 
     @router.get("/api/preferences/hidden")
     def get_hidden_preferences(app_id: str | None = None, target_kind: str | None = None, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
@@ -522,7 +786,9 @@ def create_router() -> APIRouter:
                 ).fetchall()
             )
             dependencies = enrich_dependencies(conn, dependencies)
-            storage = db.path.stat().st_size if db.path.exists() else 0
+            db_path = getattr(db, "path", None)
+            storage = db_path.stat().st_size if db_path and db_path.exists() else 0
+            retention_values = read_retention_settings(conn, settings)
             return {
                 "apps": apps,
                 "totals": totals,
@@ -533,7 +799,7 @@ def create_router() -> APIRouter:
                 "routes": routes,
                 "dependencies": dependencies,
                 "log_window": {"minutes": log_window_minutes, "start": log_start, "limit": log_limit, "returned": len(recent_logs)},
-                "retention": {"days": settings.retention_days, "database_bytes": storage},
+                "retention": {"days": retention_values["retention_days"], "database_bytes": storage},
             }
 
     @router.get("/api/apps/{app_id}/overview")
@@ -545,13 +811,15 @@ def create_router() -> APIRouter:
             if not app:
                 raise HTTPException(status_code=404, detail="app not found")
             counts = row_to_dict(conn.execute("SELECT COUNT(*) event_count FROM events WHERE app_id=?", (app_id,)).fetchone())
-            request_count = conn.execute(f"SELECT COALESCE(SUM(call_count),0) FROM routes WHERE app_id=? AND {route_clause}", [app_id, *route_params]).fetchone()[0]
-            error_count = conn.execute(f"SELECT COALESCE(SUM(error_count),0) FROM routes WHERE app_id=? AND {route_clause}", [app_id, *route_params]).fetchone()[0]
-            log_count = conn.execute(f"SELECT COUNT(*) FROM logs WHERE app_id=? AND (logs.route_id IS NULL OR {log_route_clause})", [app_id, *log_route_params]).fetchone()[0]
+            request_count = scalar(conn.execute(f"SELECT COALESCE(SUM(call_count),0) AS count FROM routes WHERE app_id=? AND {route_clause}", [app_id, *route_params]).fetchone(), "count")
+            error_count = scalar(conn.execute(f"SELECT COALESCE(SUM(error_count),0) AS count FROM routes WHERE app_id=? AND {route_clause}", [app_id, *route_params]).fetchone(), "count")
+            log_count = scalar(conn.execute(f"SELECT COUNT(*) AS count FROM logs WHERE app_id=? AND (logs.route_id IS NULL OR {log_route_clause})", [app_id, *log_route_params]).fetchone(), "count")
             slow_routes = rows_to_dicts(conn.execute(f"SELECT * FROM routes WHERE app_id=? AND {route_clause} ORDER BY p95_ms DESC LIMIT 10", [app_id, *route_params]).fetchall())
             failing_routes = rows_to_dicts(conn.execute(f"SELECT * FROM routes WHERE app_id=? AND {route_clause} AND error_count > 0 ORDER BY error_count DESC LIMIT 10", [app_id, *route_params]).fetchall())
-            storage = db.path.stat().st_size if db.path.exists() else 0
-            return {"app": app, "event_count": counts["event_count"], "request_count": request_count, "error_count": error_count, "log_count": log_count, "top_slow_routes": slow_routes, "top_failing_routes": failing_routes, "retention": {"days": settings.retention_days, "database_bytes": storage}}
+            db_path = getattr(db, "path", None)
+            storage = db_path.stat().st_size if db_path and db_path.exists() else 0
+            retention_values = read_retention_settings(conn, settings)
+            return {"app": app, "event_count": counts["event_count"], "request_count": request_count, "error_count": error_count, "log_count": log_count, "top_slow_routes": slow_routes, "top_failing_routes": failing_routes, "retention": {"days": retention_values["retention_days"], "database_bytes": storage}}
 
     @router.get("/api/apps/{app_id}/routes")
     def routes(app_id: str, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
@@ -935,7 +1203,11 @@ def create_router() -> APIRouter:
             flow_logs = sorted(exact_logs_by_id.values(), key=lambda item: item.get("timestamp") or "")
             timeline = sorted([*events, *[{**span, "kind": "span", "timestamp": span.get("started_at") or span.get("finished_at")} for span in spans], *[{**log, "kind": "log_record", "timestamp": log.get("timestamp"), "correlation": "exact_trace"} for log in flow_logs]], key=lambda item: item.get("timestamp") or "")
             flow = build_trace_flow(trace_id, traces, spans, dependencies, flow_logs, exceptions)
-            return {"trace_id": trace_id, "traces": traces, "events": events, "spans": spans, "logs": logs, "flow_logs": flow_logs, "nearby_background_logs": nearby_background_logs, "exceptions": exceptions, "dependencies": dependencies, "timeline": timeline, "nearby_logs_all_apps": nearby_logs, "flow": flow}
+            dependency_groups = build_dependency_groups(dependencies)
+            relationship_loader_groups = build_relationship_loader_groups(dependencies)
+            slow_gap_markers = build_slow_gap_markers(timeline, traces)
+            duplicate_candidates = build_duplicate_candidates(dependencies)
+            return {"trace_id": trace_id, "traces": traces, "events": events, "spans": spans, "logs": logs, "flow_logs": flow_logs, "nearby_background_logs": nearby_background_logs, "exceptions": exceptions, "dependencies": dependencies, "timeline": timeline, "nearby_logs_all_apps": nearby_logs, "flow": flow, "dependency_groups": dependency_groups, "relationship_loader_groups": relationship_loader_groups, "slow_gap_markers": slow_gap_markers, "duplicate_candidates": duplicate_candidates}
 
     @router.get("/api/traces/{trace_id}/correlated-logs")
     def correlated_trace_logs(trace_id: str, level: str | None = None, app_ids: str | None = None, same_project: bool = True, window_seconds: int = Query(180, ge=1, le=3600), limit: int = Query(500, ge=1, le=2000), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
@@ -991,6 +1263,91 @@ def create_router() -> APIRouter:
             app_id = str(log.get("app_id"))
             grouped.setdefault(app_id, {"app_id": app_id, "service_name": log.get("service_name"), "logs": []})["logs"].append(log)
         return {"trace_id": trace_id, "logs": logs, "groups": list(grouped.values())}
+
+
+    @router.get("/api/errors/summary")
+    def errors_summary(project_name: str | None = None, app_id: str | None = None, log_window_minutes: int = Query(60, ge=0, le=43200), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        start = log_window_start(log_window_minutes)
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        exc_clause, exc_params = hidden_preference_clause("exceptions", "exception", user_id, "exceptions.app_id")
+        log_route_clause, log_route_params = hidden_route_clause(user_id, "logs.route_id", "logs.app_id")
+        log_time_clause = "AND logs.timestamp >= ?" if start else ""
+        with db.connect() as conn:
+            totals = row_to_dict(
+                conn.execute(
+                    f"""
+                    SELECT
+                      (SELECT COALESCE(SUM(exceptions.count),0) FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE {app_clause} AND {exc_clause}) exception_count,
+                      (SELECT COUNT(*) FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE {app_clause} AND {exc_clause}) cluster_count,
+                      (SELECT COUNT(*) FROM logs JOIN apps ON apps.id=logs.app_id WHERE {app_clause} AND (logs.route_id IS NULL OR {log_route_clause}) AND UPPER(COALESCE(logs.level,'')) IN ('ERROR','CRITICAL') {log_time_clause}) error_log_count
+                    """,
+                    [*app_params, *exc_params, *app_params, *exc_params, *app_params, *log_route_params, *([start] if start else [])],
+                ).fetchone()
+            )
+            by_type = rows_to_dicts(conn.execute(f"SELECT exceptions.type, COALESCE(SUM(exceptions.count),0) count, COUNT(*) clusters FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE {app_clause} AND {exc_clause} GROUP BY exceptions.type ORDER BY count DESC LIMIT 20", [*app_params, *exc_params]).fetchall())
+            by_service = rows_to_dicts(conn.execute(f"SELECT apps.project_name, apps.service_name, COUNT(*) clusters, COALESCE(SUM(exceptions.count),0) count FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE {app_clause} AND {exc_clause} GROUP BY apps.project_name, apps.service_name ORDER BY count DESC LIMIT 20", [*app_params, *exc_params]).fetchall())
+        return {"totals": totals, "by_type": by_type, "by_service": by_service, "window": {"minutes": log_window_minutes, "start": start}}
+
+    @router.get("/api/errors/clusters")
+    def error_clusters(project_name: str | None = None, app_id: str | None = None, limit: int = Query(50, ge=1, le=200), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        exc_clause, exc_params = hidden_preference_clause("exceptions", "exception", user_id, "exceptions.app_id")
+        with db.connect() as conn:
+            return rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT exceptions.*, apps.project_name, apps.service_name, routes.method, routes.route_pattern
+                    FROM exceptions
+                    JOIN apps ON apps.id=exceptions.app_id
+                    LEFT JOIN traces ON traces.id=exceptions.sample_trace_id AND traces.app_id=exceptions.app_id
+                    LEFT JOIN routes ON routes.id=traces.route_id AND routes.app_id=traces.app_id
+                    WHERE {app_clause} AND {exc_clause}
+                    ORDER BY exceptions.count DESC, exceptions.last_seen DESC LIMIT ?
+                    """,
+                    [*app_params, *exc_params, limit],
+                ).fetchall()
+            )
+
+    @router.get("/api/errors/timeline")
+    def errors_timeline(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        start = iso(datetime.now(UTC) - timedelta(minutes=window_minutes))
+        bucket = time_bucket("events.timestamp", bucket_minutes, is_postgres=db.is_postgres)
+        exception_type = json_text("events.payload_json", "type", is_postgres=db.is_postgres)
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        with db.connect() as conn:
+            return rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT {bucket} bucket, apps.project_name, apps.service_name,
+                      COALESCE({exception_type}, 'Exception') type,
+                      COUNT(*) count
+                    FROM events JOIN apps ON apps.id=events.app_id
+                    WHERE {app_clause} AND events.kind='exception_raised' AND events.timestamp >= ?
+                    GROUP BY bucket, apps.project_name, apps.service_name, type
+                    ORDER BY bucket ASC LIMIT 1000
+                    """,
+                    [*app_params, start],
+                ).fetchall()
+            )
+
+    @router.get("/api/metrics/timeseries")
+    def metrics_timeseries(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        start = iso(datetime.now(UTC) - timedelta(minutes=window_minutes))
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        route_bucket = time_bucket("route_durations.timestamp", bucket_minutes, is_postgres=db.is_postgres)
+        log_bucket = time_bucket("logs.timestamp", bucket_minutes, is_postgres=db.is_postgres)
+        event_bucket = time_bucket("events.timestamp", bucket_minutes, is_postgres=db.is_postgres)
+        with db.connect() as conn:
+            requests = rows_to_dicts(conn.execute(f"""SELECT {route_bucket} bucket, COUNT(*) requests, COALESCE(SUM(CASE WHEN COALESCE(route_durations.status_code,0) >= 500 THEN 1 ELSE 0 END),0) request_errors, AVG(route_durations.duration_ms) avg_ms FROM route_durations JOIN routes ON routes.id=route_durations.route_id JOIN apps ON apps.id=routes.app_id WHERE {app_clause} AND route_durations.timestamp >= ? GROUP BY bucket ORDER BY bucket ASC LIMIT 1000""", [*app_params, start]).fetchall())
+            logs = rows_to_dicts(conn.execute(f"""SELECT {log_bucket} bucket, COUNT(*) logs, COALESCE(SUM(CASE WHEN UPPER(COALESCE(logs.level,'')) IN ('ERROR','CRITICAL') THEN 1 ELSE 0 END),0) error_logs FROM logs JOIN apps ON apps.id=logs.app_id WHERE {app_clause} AND logs.timestamp >= ? GROUP BY bucket ORDER BY bucket ASC LIMIT 1000""", [*app_params, start]).fetchall())
+            exceptions = rows_to_dicts(conn.execute(f"""SELECT {event_bucket} bucket, COUNT(*) exceptions FROM events JOIN apps ON apps.id=events.app_id WHERE {app_clause} AND events.kind='exception_raised' AND events.timestamp >= ? GROUP BY bucket ORDER BY bucket ASC LIMIT 1000""", [*app_params, start]).fetchall())
+        merged: dict[str, dict[str, Any]] = {}
+        for rows in (requests, logs, exceptions):
+            for row in rows:
+                bucket_value = str(row.get("bucket"))
+                item = merged.setdefault(bucket_value, {"bucket": bucket_value, "requests": 0, "request_errors": 0, "avg_ms": 0, "logs": 0, "error_logs": 0, "exceptions": 0})
+                item.update({key: value for key, value in row.items() if key != "bucket"})
+        return [merged[key] for key in sorted(merged)]
 
     @router.post("/api/admin/clear")
     def clear(db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, str]:

@@ -62,5 +62,12 @@ secrets.yml
 .DS_Store
 Thumbs.db
 
+# Deployment-local connection artifacts
+.pi/
+deployments/*/info.txt
+deployments/*/*.pub
+deployments/*/*.pem
+deployments/*/db-password.txt
+
 # Git-generated reports
 .git-reports/

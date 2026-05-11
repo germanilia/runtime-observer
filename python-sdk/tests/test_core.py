@@ -5,6 +5,7 @@ import logging
 
 from runtime_observer import init_runtime_observer
 from runtime_observer.config import resolve_config
+from runtime_observer.logs import RuntimeObserverLoggingHandler
 from runtime_observer.context import ObserverContext, get_current_context, use_context
 from runtime_observer.redaction import redact_string, summarize_value
 
@@ -15,6 +16,19 @@ def test_config_explicit_overrides_env(monkeypatch):
     assert config.api_key == "explicit"
     assert config.service_name == "svc"
     assert config.enabled is False
+
+
+def test_config_log_level_filters_debug(monkeypatch):
+    monkeypatch.setenv("RUNTIME_OBSERVER_LOG_LEVEL", "info")
+    config = resolve_config(enabled=False)
+    assert "DEBUG" not in config.log_levels
+    assert {"INFO", "WARNING", "ERROR", "CRITICAL"}.issubset(config.log_levels)
+
+
+def test_config_log_levels_allow_explicit_set(monkeypatch):
+    monkeypatch.setenv("RUNTIME_OBSERVER_LOG_LEVELS", "warning,error")
+    config = resolve_config(enabled=False)
+    assert config.log_levels == {"WARNING", "ERROR"}
 
 
 def test_redaction_secret_patterns():
@@ -38,7 +52,7 @@ def test_context_propagates_across_asyncio():
 
 
 def test_exporter_drops_when_queue_full():
-    observer = init_runtime_observer(service_name="test", enabled=True, insecure_local_dev=True, max_queue_size=1, capture_logs=False)
+    observer = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, max_queue_size=1, capture_logs=False)
     observer.exporter.shutdown(timeout=0.1)
     observer.exporter.enqueue(observer.builder.event("sdk_diagnostic", {"n": 1}))
     observer.exporter.enqueue(observer.builder.event("sdk_diagnostic", {"n": 2}))
@@ -46,7 +60,7 @@ def test_exporter_drops_when_queue_full():
 
 
 def test_stdlib_log_capture_is_redacted():
-    observer = init_runtime_observer(service_name="test", enabled=True, insecure_local_dev=True, capture_logs=True)
+    observer = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, capture_logs=True)
     observer.exporter.shutdown(timeout=0.1)
     logger = logging.getLogger("runtime_observer_test")
     logger.warning("Authorization Bearer abcdefghijklmnopqrstuvwxyz0123456789")
@@ -56,3 +70,26 @@ def test_stdlib_log_capture_is_redacted():
     log_events = [event for event in events if event["kind"] == "log_record"]
     assert log_events
     assert "<redacted:token>" in log_events[-1]["payload"]["message"]
+
+
+def test_existing_stdlib_handler_uses_new_log_level_config():
+    root = logging.getLogger()
+    previous_handlers = list(root.handlers)
+    root.handlers = [handler for handler in root.handlers if not isinstance(handler, RuntimeObserverLoggingHandler)]
+    try:
+        first = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, capture_logs=True)
+        first.exporter.shutdown(timeout=0.1)
+        second = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, capture_logs=True, log_level="INFO")
+        second.exporter.shutdown(timeout=0.1)
+        logger = logging.getLogger("runtime_observer_reconfigured")
+        logger.setLevel(logging.DEBUG)
+        logger.debug("debug should not be captured")
+        logger.info("info should be captured")
+        events = []
+        while not second.exporter._queue.empty():
+            events.append(second.exporter._queue.get_nowait())
+        messages = [event["payload"].get("message") for event in events if event["kind"] == "log_record"]
+        assert "debug should not be captured" not in messages
+        assert "info should be captured" in messages
+    finally:
+        root.handlers = previous_handlers

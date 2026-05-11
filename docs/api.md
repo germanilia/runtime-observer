@@ -42,7 +42,13 @@ Dashboard routes require a session cookie unless insecure dev mode is enabled. T
 | `DELETE` | `/api/preferences/hidden/{target_kind}/{target_id}` | Restore a hidden item for the current user; optionally scope by `?app_id=`. |
 | `GET` | `/api/entrypoints` | All routes across all applications with trace and log counts. Append `?include_hidden=true` to include hidden routes with a `hidden` flag. |
 | `GET` | `/api/routes/{route_id}/requests` | Recent traces and related logs for a route. Append `?include_hidden=true` to bypass hidden filter. |
-| `GET` | `/api/traces/{trace_id}/map` | Full causal map: spans, events, exact logs, dependencies, nearby background logs, and a `flow` graph of nodes/edges for visualization. |
+| `GET` | `/api/settings` | Get collector settings (currently: `retention` object with `retention_days`, `min_log_minutes`, `exception_window_minutes`). |
+| `PUT` | `/api/settings` | Update collector settings. Body: `{ "retention": { "retention_days": N, "min_log_minutes": N, "exception_window_minutes": N } }`. Persisted in `collector_settings`. |
+| `GET` | `/api/errors/summary` | Aggregated error summary: total exception count, cluster count, error log count, broken down by exception type and service. Accepts `project_name`, `app_id`, and `log_window_minutes` query params. |
+| `GET` | `/api/errors/clusters` | List exception clusters ordered by occurrence count. Accepts `project_name`, `app_id`, `limit`. |
+| `GET` | `/api/errors/timeline` | Time-bucketed exception event counts for charts. Accepts `project_name`, `app_id`, `window_minutes`, `bucket_minutes`. |
+| `GET` | `/api/metrics/timeseries` | Time-bucketed request, error, log, and exception counts merged into a single series. Accepts `project_name`, `app_id`, `window_minutes`, `bucket_minutes`. |
+| `GET` | `/api/traces/{trace_id}/map` | Full causal map: spans, events, exact logs, dependencies, nearby background logs, a `flow` graph, plus insight fields `dependency_groups`, `relationship_loader_groups`, `slow_gap_markers`, and `duplicate_candidates`. |
 | `GET` | `/api/traces/{trace_id}/correlated-logs` | Cross-app trace logs grouped by app/service with `level`, comma-separated `app_ids`, `same_project`, `window_seconds`, and `limit` filters plus exact-vs-nearby correlation metadata. |
 | `GET` | `/api/traces/{trace_id}/agent-context` | Markdown context for agent-assisted debugging of a trace. |
 | `GET` | `/api/dependencies/{dependency_id}/context` | Dependency samples, error samples, and nearby logs. |

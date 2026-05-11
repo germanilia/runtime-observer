@@ -5,6 +5,9 @@ from enum import StrEnum
 import os
 from pathlib import Path
 
+_LOG_LEVEL_ORDER = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+_LOG_LEVEL_RANK = {level: index for index, level in enumerate(_LOG_LEVEL_ORDER)}
+
 
 class CaptureMode(StrEnum):
     DEV = "dev"
@@ -42,6 +45,8 @@ class RuntimeObserverConfig:
     def exporting_enabled(self) -> bool:
         if not self.enabled or self.capture_mode == CaptureMode.OFF:
             return False
+        if not self.project_name:
+            return False
         return bool(self.api_key) or self.insecure_local_dev
 
 
@@ -67,6 +72,27 @@ def _float(value: str | None, default: float) -> float:
         return float(value)
     except ValueError:
         return default
+
+
+def _parse_log_levels(value: object | None) -> set[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = [part.strip().upper() for part in value.replace(";", ",").split(",") if part.strip()]
+    elif isinstance(value, (set, list, tuple)):
+        parts = [str(part).strip().upper() for part in value if str(part).strip()]
+    else:
+        parts = [str(value).strip().upper()]
+    selected = {part for part in parts if part in _LOG_LEVEL_RANK}
+    return selected or None
+
+
+def _levels_at_or_above(value: object | None) -> set[str] | None:
+    levels = _parse_log_levels(value)
+    if not levels:
+        return None
+    minimum = min(_LOG_LEVEL_RANK[level] for level in levels)
+    return {level for level in _LOG_LEVEL_ORDER if _LOG_LEVEL_RANK[level] >= minimum}
 
 
 def _service_name(default: str | None = None) -> str:
@@ -106,8 +132,14 @@ def resolve_config(**overrides: object) -> RuntimeObserverConfig:
         log_message_max_length=_int(str(overrides["log_message_max_length"]) if "log_message_max_length" in overrides else os.getenv("RUNTIME_OBSERVER_LOG_MESSAGE_MAX_LENGTH"), 2048),
         insecure_local_dev=_bool(str(overrides["insecure_local_dev"]) if "insecure_local_dev" in overrides else os.getenv("RUNTIME_OBSERVER_INSECURE_LOCAL_DEV"), False),
     )
-    if mode == "prod":
+    configured_levels = _parse_log_levels(overrides.get("log_levels") if "log_levels" in overrides else os.getenv("RUNTIME_OBSERVER_LOG_LEVELS"))
+    configured_min_level = _levels_at_or_above(overrides.get("log_level") if "log_level" in overrides else os.getenv("RUNTIME_OBSERVER_LOG_LEVEL"))
+    if configured_levels:
+        config.log_levels = configured_levels
+    elif configured_min_level:
+        config.log_levels = configured_min_level
+    elif mode == "prod":
         config.log_levels = {"INFO", "WARNING", "ERROR", "CRITICAL"}
-        if "capture_db_query_values" not in overrides and os.getenv("RUNTIME_OBSERVER_CAPTURE_DB_QUERY_VALUES") is None:
-            config.capture_db_query_values = False
+    if mode == "prod" and "capture_db_query_values" not in overrides and os.getenv("RUNTIME_OBSERVER_CAPTURE_DB_QUERY_VALUES") is None:
+        config.capture_db_query_values = False
     return config

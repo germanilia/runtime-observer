@@ -35,6 +35,18 @@ docker compose up collector
 
 The compose service stores SQLite data in a named Docker volume and exposes the collector on port `4319`.
 
+## EC2 deployment
+
+The reproducible EC2 deployment is driven by:
+
+```bash
+RUNTIME_OBSERVER_DB_PASSWORD='<database-password>' just deploy-ec2 sela
+```
+
+This uses the `sela` AWS profile by default, deploys in `us-east-1` so the existing `*.bobthebot.io` ACM certificate can be attached to the ALB, creates/updates `metrics.bobthebot.io` in Route 53, and writes connection details to `deployments/sela/info.txt`. Provide the database password through `RUNTIME_OBSERVER_DB_PASSWORD` or an ignored local `deployments/sela/db-password.txt` file. The generated SSH private key is stored in `deployments/sela/runtime-observer-sela.pem` and ignored by git.
+
+The EC2 host runs Docker Compose with `pgvector/pgvector:pg17` as Postgres and the collector service. Database schema migrations run automatically when the collector starts.
+
 ## Security checklist
 
 - Generate SDK API keys in the dashboard per project; do not keep SDK ingest keys in `.env` files.

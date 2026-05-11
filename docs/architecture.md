@@ -22,11 +22,11 @@ Instrumented app → runtime_observer SDK → /v1/ingest → collector store →
 
 ## Collector responsibilities
 
-- Enforce project-scoped API-key authentication for ingestion and session-cookie auth for dashboard/API routes unless insecure dev mode is enabled. The first dashboard login bootstraps the admin user; SDK ingest keys are generated per project in the dashboard and stored hashed in SQLite.
-- Store raw redacted events plus query-optimized aggregates in SQLite.
-- Provide dashboard APIs for apps, routes, traces, logs, exceptions, dependencies, and agent context.
-- Apply retention cleanup during startup.
+- Enforce project-scoped API-key authentication for ingestion and session-cookie auth for dashboard/API routes unless insecure dev mode is enabled. The first dashboard login bootstraps the admin user; SDK ingest keys are generated per project in the dashboard and stored hashed in the database.
+- Store raw redacted events plus query-optimized aggregates in the database.
+- Provide dashboard APIs for apps, routes, traces, logs, exceptions, dependencies, errors, metrics, and agent context.
+- Apply retention cleanup during startup, respecting `collector_settings`-stored retention overrides and `retention_pins`.
 
 ## Persistence
 
-The collector uses SQLite for local development and lightweight deployments. Runtime database files are intentionally ignored by git.
+The collector supports SQLite (default for local development and lightweight deployments) and PostgreSQL (set `RUNTIME_OBSERVER_DATABASE_URL` to a `postgres://` URL). The schema is applied automatically on startup via `db.py`. Runtime SQLite database files are intentionally ignored by git.

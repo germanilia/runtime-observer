@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from runtime_observer_server.config import Settings
 from runtime_observer_server.db import Database
 from runtime_observer_server.main import create_app
+from runtime_observer_server.store import CollectorStore
 
 
 def test_settings_load_database_url_from_secrets_file(tmp_path):
@@ -111,6 +113,66 @@ def correlated_events():
     ]
 
 
+def iso_at(delta: timedelta) -> str:
+    return (datetime.now(UTC) + delta).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def test_settings_api_validates_and_persists_retention(tmp_path):
+    client = make_client(tmp_path)
+    login(client)
+
+    assert client.get("/api/settings").json()["retention"]["min_log_minutes"] == 60
+    response = client.put("/api/settings", json={"retention": {"retention_days": 14, "min_log_minutes": 120, "exception_window_minutes": 30}})
+    assert response.status_code == 200
+    assert response.json()["retention"] == {"retention_days": 14, "min_log_minutes": 120, "exception_window_minutes": 30}
+    assert client.get("/api/settings").json()["retention"]["retention_days"] == 14
+    assert client.put("/api/settings", json={"retention": {"min_log_minutes": 10}}).status_code == 422
+
+
+def test_cleanup_keeps_last_hour_of_logs_even_with_zero_day_retention(tmp_path):
+    db = Database(tmp_path / "collector.sqlite3")
+    app_id = "app"
+    with db.connect() as conn:
+        conn.execute("INSERT INTO apps(id, service_name, first_seen, last_seen, metadata_json) VALUES(?,?,?,?,?)", (app_id, "api", iso_at(timedelta(hours=-2)), iso_at(timedelta()), "{}"))
+        conn.execute("INSERT INTO logs(id, app_id, timestamp, structured_json, exception_json, message) VALUES(?,?,?,?,?,?)", ("recent", app_id, iso_at(timedelta(minutes=-30)), "{}", "{}", "recent"))
+        conn.execute("INSERT INTO logs(id, app_id, timestamp, structured_json, exception_json, message) VALUES(?,?,?,?,?,?)", ("old", app_id, iso_at(timedelta(minutes=-90)), "{}", "{}", "old"))
+
+    CollectorStore(db).cleanup(0)
+
+    with db.connect() as conn:
+        ids = {row["id"] for row in conn.execute("SELECT id FROM logs").fetchall()}
+    assert ids == {"recent"}
+
+
+def test_cleanup_preserves_exception_trace_and_nearby_logs(tmp_path):
+    db = Database(tmp_path / "collector.sqlite3")
+    app_id = "app"
+    old = iso_at(timedelta(days=-2))
+    nearby = iso_at(timedelta(days=-2, minutes=5))
+    unrelated = iso_at(timedelta(days=-2, hours=2))
+    with db.connect() as conn:
+        conn.execute("INSERT INTO apps(id, service_name, first_seen, last_seen, metadata_json) VALUES(?,?,?,?,?)", (app_id, "api", old, old, "{}"))
+        conn.execute("INSERT INTO exceptions(id, app_id, fingerprint, type, normalized_message, first_seen, last_seen, count, sample_trace_id, sample_payload_json) VALUES(?,?,?,?,?,?,?,?,?,?)", ("exc", app_id, "fp", "ValueError", "boom", old, old, 1, "trace-error", "{}"))
+        conn.execute("INSERT INTO traces(id, app_id, started_at, finished_at) VALUES(?,?,?,?)", ("trace-error", app_id, old, old))
+        conn.execute("INSERT INTO traces(id, app_id, started_at, finished_at) VALUES(?,?,?,?)", ("trace-old", app_id, old, old))
+        conn.execute("INSERT INTO spans(trace_id, app_id, started_at, finished_at, payload_json) VALUES(?,?,?,?,?)", ("trace-error", app_id, old, old, "{}"))
+        conn.execute("INSERT INTO events(id, app_id, trace_id, kind, timestamp, payload_json, raw_json) VALUES(?,?,?,?,?,?,?)", ("evt-error", app_id, "trace-error", "log_record", old, "{}", "{}"))
+        conn.execute("INSERT INTO events(id, app_id, trace_id, kind, timestamp, payload_json, raw_json) VALUES(?,?,?,?,?,?,?)", ("evt-old", app_id, "trace-old", "log_record", old, "{}", "{}"))
+        conn.execute("INSERT INTO logs(id, app_id, trace_id, timestamp, structured_json, exception_json, message) VALUES(?,?,?,?,?,?,?)", ("exact", app_id, "trace-error", old, "{}", "{}", "exact"))
+        conn.execute("INSERT INTO logs(id, app_id, timestamp, structured_json, exception_json, message) VALUES(?,?,?,?,?,?)", ("nearby", app_id, nearby, "{}", "{}", "nearby"))
+        conn.execute("INSERT INTO logs(id, app_id, timestamp, structured_json, exception_json, message) VALUES(?,?,?,?,?,?)", ("unrelated", app_id, unrelated, "{}", "{}", "unrelated"))
+
+    CollectorStore(db).cleanup(1, exception_window_minutes=10)
+
+    with db.connect() as conn:
+        log_ids = {row["id"] for row in conn.execute("SELECT id FROM logs").fetchall()}
+        trace_ids = {row["id"] for row in conn.execute("SELECT id FROM traces").fetchall()}
+        event_ids = {row["id"] for row in conn.execute("SELECT id FROM events").fetchall()}
+    assert log_ids == {"exact", "nearby"}
+    assert trace_ids == {"trace-error"}
+    assert event_ids == {"evt-error"}
+
+
 def test_project_api_keys_scope_ingest_by_project(tmp_path):
     client = make_client(tmp_path)
     login(client)
@@ -175,6 +237,37 @@ def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
     assert "other project noise" in {log["message"] for log in all_projects["logs"]}
 
 
+def test_error_dashboard_aggregation_endpoints_respect_scope(tmp_path):
+    client = make_client(tmp_path)
+    events = [*sample_events(), *correlated_events()]
+    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": events})
+    assert response.status_code == 200
+    login(client)
+
+    summary = client.get("/api/errors/summary", params={"log_window_minutes": 0, "project_name": "internal-assistant"}).json()
+    assert summary["totals"]["exception_count"] == 1
+    assert summary["totals"]["cluster_count"] == 1
+    assert summary["by_type"][0]["type"] == "ValueError"
+    assert summary["by_service"][0]["service_name"] == "backend"
+
+    clusters = client.get("/api/errors/clusters", params={"project_name": "internal-assistant"}).json()
+    assert len(clusters) == 1
+    assert clusters[0]["type"] == "ValueError"
+    assert clusters[0]["project_name"] == "internal-assistant"
+
+    timeline = client.get("/api/errors/timeline", params={"project_name": "internal-assistant", "window_minutes": 43200, "bucket_minutes": 60}).json()
+    assert sum(row["count"] for row in timeline) == 1
+    assert timeline[0]["type"] == "ValueError"
+
+    series = client.get("/api/metrics/timeseries", params={"project_name": "shop", "window_minutes": 43200, "bucket_minutes": 60}).json()
+    assert sum(row["requests"] for row in series) == 1
+    assert sum(row["request_errors"] for row in series) == 1
+    assert sum(row["error_logs"] for row in series) == 2
+
+    scoped = client.get("/api/errors/clusters", params={"project_name": "shop"}).json()
+    assert scoped == []
+
+
 def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     client = make_client(tmp_path)
     assert client.post("/v1/ingest", json={"events": []}).status_code == 401
@@ -228,6 +321,53 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     clear = client.post("/api/admin/clear")
     assert clear.status_code == 200
     assert client.get("/api/apps").json() == []
+
+
+def semantic_trace_events():
+    service = {"project_name": "shop", "name": "api", "display_name": "Shop API", "language": "python"}
+    return [
+        {"schema_version": "1.0", "event_id": "sem-start", "timestamp": "2026-05-09T22:00:00.000Z", "service": service, "trace_id": "trace-sem", "span_id": "root", "kind": "request_started", "payload": {"method": "GET", "route_pattern": "/orders"}},
+        {"schema_version": "1.0", "event_id": "sem-span-start", "timestamp": "2026-05-09T22:00:00.010Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "parent_span_id": "root", "kind": "span_started", "payload": {"name": "load_orders", "kind": "function"}},
+        {"schema_version": "1.0", "event_id": "sem-db-1", "timestamp": "2026-05-09T22:00:00.100Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "kind": "db_query", "payload": {"operation": "SELECT orders.items", "table": "order_items", "statement_fingerprint": "SELECT * FROM order_items WHERE order_id=?", "model": "Order", "relationship": "items", "loader_strategy": "lazy", "duration_ms": 30}},
+        {"schema_version": "1.0", "event_id": "sem-db-2", "timestamp": "2026-05-09T22:00:00.180Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "kind": "db_query", "payload": {"operation": "SELECT orders.items", "table": "order_items", "statement_fingerprint": "SELECT * FROM order_items WHERE order_id=?", "model": "Order", "relationship": "items", "loader_strategy": "lazy", "duration_ms": 25}},
+        {"schema_version": "1.0", "event_id": "sem-db-3", "timestamp": "2026-05-09T22:00:00.260Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "kind": "db_query", "payload": {"operation": "SELECT orders.items", "table": "order_items", "statement_fingerprint": "SELECT * FROM order_items WHERE order_id=?", "model": "Order", "relationship": "items", "loader_strategy": "lazy", "duration_ms": 35}},
+        {"schema_version": "1.0", "event_id": "sem-http", "timestamp": "2026-05-09T22:00:01.500Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "kind": "http_client_call", "payload": {"host": "payments.internal", "method": "GET", "duration_ms": 80}},
+        {"schema_version": "1.0", "event_id": "sem-span-finish", "timestamp": "2026-05-09T22:00:02.800Z", "service": service, "trace_id": "trace-sem", "span_id": "load-orders", "parent_span_id": "root", "kind": "span_finished", "payload": {"name": "load_orders", "kind": "function", "duration_ms": 2790, "status": "ok"}},
+        {"schema_version": "1.0", "event_id": "sem-finish", "timestamp": "2026-05-09T22:00:03.000Z", "service": service, "trace_id": "trace-sem", "span_id": "root", "kind": "request_finished", "payload": {"method": "GET", "route_pattern": "/orders", "duration_ms": 3000, "status_code": 200}},
+    ]
+
+
+def test_trace_map_includes_semantic_groups_gaps_and_duplicates(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": semantic_trace_events()})
+    assert response.status_code == 200
+    login(client)
+
+    trace_map = client.get("/api/traces/trace-sem/map").json()
+
+    assert {"dependency_groups", "relationship_loader_groups", "slow_gap_markers", "duplicate_candidates"} <= set(trace_map)
+    assert "flow" in trace_map and "timeline" in trace_map  # existing fields are preserved
+
+    db_group = next(group for group in trace_map["dependency_groups"] if group["dependency_type"] == "db")
+    assert db_group["target"] == "order_items"
+    assert db_group["operation"] == "SELECT orders.items"
+    assert db_group["count"] == 3
+    assert db_group["total_duration_ms"] == 90
+    assert db_group["span_ids"] == ["load-orders"]
+
+    loader_group = trace_map["relationship_loader_groups"][0]
+    assert loader_group["model"] == "Order"
+    assert loader_group["relationship"] == "items"
+    assert loader_group["loader_strategy"] == "lazy"
+    assert loader_group["count"] == 3
+    assert loader_group["suspected_n_plus_one"] is True
+
+    duplicate = trace_map["duplicate_candidates"][0]
+    assert duplicate["dependency_type"] == "db"
+    assert duplicate["count"] == 3
+    assert duplicate["event_ids"] == ["sem-db-1", "sem-db-2", "sem-db-3"]
+
+    assert any(marker["from_event_id"] == "sem-db-3" and marker["to_event_id"] == "sem-http" for marker in trace_map["slow_gap_markers"])
 
 
 def test_session_login_logout_and_first_admin_bootstrap(tmp_path):

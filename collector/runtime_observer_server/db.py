@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 
-SCHEMA = """
+SQLITE_SCHEMA = """
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS apps (
   id TEXT PRIMARY KEY, project_name TEXT, service_name TEXT NOT NULL, display_name TEXT, language TEXT,
@@ -96,8 +98,23 @@ CREATE TABLE IF NOT EXISTS project_settings (
   project_name TEXT PRIMARY KEY, display_name TEXT,
   created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS collector_settings (
+  key TEXT PRIMARY KEY, value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL, updated_by TEXT
+);
+CREATE TABLE IF NOT EXISTS retention_pins (
+  id TEXT PRIMARY KEY, app_id TEXT NOT NULL, target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL, trace_id TEXT, start_time TEXT, end_time TEXT,
+  reason TEXT, created_at TEXT NOT NULL, expires_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_retention_pins_target ON retention_pins(app_id, target_kind, target_id);
+CREATE INDEX IF NOT EXISTS idx_retention_pins_trace ON retention_pins(trace_id);
+CREATE INDEX IF NOT EXISTS idx_retention_pins_window ON retention_pins(start_time, end_time, expires_at);
 """
 
+POSTGRES_SCHEMA = SQLITE_SCHEMA.replace("PRAGMA journal_mode=WAL;", "CREATE EXTENSION IF NOT EXISTS vector;").replace(
+    "id INTEGER PRIMARY KEY AUTOINCREMENT", "id BIGSERIAL PRIMARY KEY"
+)
 
 APP_COLUMNS = [
     "id",
@@ -113,37 +130,114 @@ APP_COLUMNS = [
 ]
 
 
+def _is_postgres_url(value: str) -> bool:
+    return value.startswith(("postgres://", "postgresql://"))
+
+
+def _translate_sql(sql: str) -> str:
+    translated = sql.replace("?", "%s")
+    translated = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO\s+(.+?)\s+VALUES", r"INSERT INTO \1 VALUES", translated, flags=re.I | re.S)
+    if re.search(r"INSERT\s+INTO\s+", translated, flags=re.I) and "ON CONFLICT" not in translated.upper():
+        translated += " ON CONFLICT DO NOTHING"
+    return translated
+
+
+class PostgresCursor:
+    def __init__(self, cursor: Any):
+        self.cursor = cursor
+
+    @property
+    def rowcount(self) -> int:
+        return self.cursor.rowcount
+
+    def fetchone(self) -> Any:
+        return self.cursor.fetchone()
+
+    def fetchall(self) -> list[Any]:
+        return self.cursor.fetchall()
+
+
+class PostgresConnection:
+    def __init__(self, conn: Any):
+        self.conn = conn
+
+    def execute(self, sql: str, params: Sequence[Any] | None = None) -> PostgresCursor:
+        cursor = self.conn.execute(_translate_sql(sql), params or ())
+        return PostgresCursor(cursor)
+
+    def executescript(self, script: str) -> None:
+        for statement in [part.strip() for part in script.split(";") if part.strip()]:
+            self.conn.execute(_translate_sql(statement))
+
+    def commit(self) -> None:
+        self.conn.commit()
+
+    def close(self) -> None:
+        self.conn.close()
+
+
 class Database:
-    def __init__(self, path: Path):
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, path_or_url: str | Path):
+        self.url = str(path_or_url)
+        self.is_postgres = _is_postgres_url(self.url)
+        if not self.is_postgres:
+            self.path = Path(path_or_url)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.path)
-        conn.row_factory = sqlite3.Row
+    def connect(self) -> Iterator[Any]:
+        if self.is_postgres:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            raw_conn = psycopg.connect(self.url, row_factory=dict_row)
+            conn: Any = PostgresConnection(raw_conn)
+        else:
+            conn = sqlite3.connect(self.path)
+            conn.row_factory = sqlite3.Row
         try:
-            self._apply_schema(conn)
+            if not self.is_postgres:
+                self._apply_schema(conn)
             yield conn
             conn.commit()
         finally:
             conn.close()
 
     def initialize(self) -> None:
+        if self.is_postgres:
+            import psycopg
+            from psycopg.rows import dict_row
+
+            raw_conn = psycopg.connect(self.url, row_factory=dict_row)
+            conn: Any = PostgresConnection(raw_conn)
+            try:
+                self._apply_schema(conn)
+                conn.commit()
+            finally:
+                conn.close()
+            return
         with sqlite3.connect(self.path) as conn:
             conn.row_factory = sqlite3.Row
             self._apply_schema(conn)
             conn.commit()
 
-    def _apply_schema(self, conn: sqlite3.Connection) -> None:
+    def _apply_schema(self, conn: Any) -> None:
+        if self.is_postgres:
+            conn.executescript(POSTGRES_SCHEMA)
+            self._apply_postgres_column_migrations(conn)
+            return
         self._migrate_apps_unique_service_name(conn)
-        conn.executescript(SCHEMA)
+        conn.executescript(SQLITE_SCHEMA)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(apps)").fetchall()}
         if "project_name" not in columns:
             conn.execute("ALTER TABLE apps ADD COLUMN project_name TEXT")
         if "display_name" not in columns:
             conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
+
+    def _apply_postgres_column_migrations(self, conn: Any) -> None:
+        conn.execute("ALTER TABLE apps ADD COLUMN IF NOT EXISTS project_name TEXT")
+        conn.execute("ALTER TABLE apps ADD COLUMN IF NOT EXISTS display_name TEXT")
 
     def _migrate_apps_unique_service_name(self, conn: sqlite3.Connection) -> None:
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='apps'").fetchone()
@@ -180,7 +274,7 @@ class Database:
         conn.execute("DROP TABLE apps_legacy_unique_service_name")
 
     def clear(self) -> None:
-        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences", "project_api_keys"]
+        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences", "project_api_keys", "retention_pins"]
         with self.connect() as conn:
             for table in tables:
                 conn.execute(f"DELETE FROM {table}")

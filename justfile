@@ -101,6 +101,10 @@ compile:
 lint:
     just compile
 
+# Deploy Runtime Observer to EC2 behind an ALB. Example: just deploy-ec2 sela
+deploy-ec2 ENVIRONMENT="sela":
+    ./scripts/deploy_ec2.sh {{ ENVIRONMENT }}
+
 # Run the minimal FastAPI example after starting the collector.
 # Uses the requested port if available, otherwise the next free port.
 run-example PREFERRED_PORT="8000":
