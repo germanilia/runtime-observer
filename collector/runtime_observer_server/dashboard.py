@@ -161,7 +161,7 @@ th.sortable:hover{color:var(--text)}
 .error-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s;text-align:left;width:100%}
 .error-item:hover{border-color:var(--red)}
 .error-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.error-type{font-size:13px;font-weight:600}
+.error-type{font-size:13px;font-weight:600;color:var(--text)}
 .error-msg{font-size:13px;color:var(--text-muted);margin-bottom:4px}
 .error-meta{font-size:11px;color:var(--text-subtle)}
 /* DEPENDENCIES */
