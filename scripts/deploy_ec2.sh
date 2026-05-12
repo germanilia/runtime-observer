@@ -91,12 +91,19 @@ aws_cmd ec2 authorize-security-group-ingress --group-id "${INSTANCE_SG_ID}" --ip
 ACCOUNT_ID=$(aws --profile "${AWS_PROFILE}" sts get-caller-identity --query Account --output text)
 DLQ_URL=$(aws_cmd sqs get-queue-url --queue-name "${INGEST_DLQ_NAME}" --query QueueUrl --output text 2>/dev/null || aws_cmd sqs create-queue --queue-name "${INGEST_DLQ_NAME}" --attributes MessageRetentionPeriod=1209600 --query QueueUrl --output text)
 DLQ_ARN=$(aws_cmd sqs get-queue-attributes --queue-url "${DLQ_URL}" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
-REDRIVE_POLICY=$(python3 - <<PY
+QUEUE_ATTRIBUTES_FILE=$(mktemp)
+python3 - <<PY > "${QUEUE_ATTRIBUTES_FILE}"
 import json
-print(json.dumps({"deadLetterTargetArn": "${DLQ_ARN}", "maxReceiveCount": "5"}))
+redrive_policy = json.dumps({"deadLetterTargetArn": "${DLQ_ARN}", "maxReceiveCount": "5"})
+print(json.dumps({
+    "VisibilityTimeout": "30",
+    "MessageRetentionPeriod": "1209600",
+    "ReceiveMessageWaitTimeSeconds": "10",
+    "RedrivePolicy": redrive_policy,
+}))
 PY
-)
-INGEST_QUEUE_URL=$(aws_cmd sqs get-queue-url --queue-name "${INGEST_QUEUE_NAME}" --query QueueUrl --output text 2>/dev/null || aws_cmd sqs create-queue --queue-name "${INGEST_QUEUE_NAME}" --attributes "VisibilityTimeout=30,MessageRetentionPeriod=1209600,ReceiveMessageWaitTimeSeconds=10,RedrivePolicy=${REDRIVE_POLICY}" --query QueueUrl --output text)
+INGEST_QUEUE_URL=$(aws_cmd sqs get-queue-url --queue-name "${INGEST_QUEUE_NAME}" --query QueueUrl --output text 2>/dev/null || aws_cmd sqs create-queue --queue-name "${INGEST_QUEUE_NAME}" --attributes "file://${QUEUE_ATTRIBUTES_FILE}" --query QueueUrl --output text)
+rm -f "${QUEUE_ATTRIBUTES_FILE}"
 INGEST_QUEUE_ARN="arn:aws:sqs:${AWS_REGION}:${ACCOUNT_ID}:${INGEST_QUEUE_NAME}"
 
 if ! aws --profile "${AWS_PROFILE}" iam get-role --role-name "${INSTANCE_ROLE_NAME}" >/dev/null 2>&1; then
