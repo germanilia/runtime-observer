@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse
+from starlette.requests import ClientDisconnect
 from .config import Settings
 from .dashboard import DASHBOARD_HTML
 from .db import Database
@@ -541,7 +542,10 @@ def create_router() -> APIRouter:
 
     @router.post("/v1/ingest")
     async def ingest(request: Request, db: Database = Depends(get_db), settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except ClientDisconnect as exc:
+            raise HTTPException(status_code=400, detail="client disconnected before request body was read") from exc
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
@@ -554,7 +558,10 @@ def create_router() -> APIRouter:
 
     @router.post("/v1/ingest/browser")
     async def ingest_browser(request: Request, api_key: str = "", db: Database = Depends(get_db), settings: Settings = Depends(get_settings)) -> dict[str, Any]:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except ClientDisconnect as exc:
+            raise HTTPException(status_code=400, detail="client disconnected before request body was read") from exc
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
