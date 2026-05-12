@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from .config import Settings
 from .dashboard import DASHBOARD_HTML
 from .db import Database
+from .ingest_queue import IngestQueueError
 from .store import now_iso, row_to_dict, rows_to_dicts, stable_id
 def get_db(request: Request) -> Database:
     return request.app.state.database
@@ -537,7 +538,10 @@ def create_router() -> APIRouter:
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
         require_ingest_auth(events, request, db=db, settings=settings)
-        return request.app.state.store.ingest(events)
+        try:
+            return request.app.state.ingest_backend.enqueue(events).to_response()
+        except IngestQueueError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     @router.post("/v1/ingest/browser")
     async def ingest_browser(request: Request, api_key: str = "", db: Database = Depends(get_db), settings: Settings = Depends(get_settings)) -> dict[str, Any]:
@@ -546,7 +550,10 @@ def create_router() -> APIRouter:
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
         require_ingest_auth(events, request, api_key=api_key, db=db, settings=settings)
-        return request.app.state.store.ingest(events)
+        try:
+            return request.app.state.ingest_backend.enqueue(events).to_response()
+        except IngestQueueError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     @router.get("/api/settings")
     def get_collector_settings(db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> dict[str, Any]:

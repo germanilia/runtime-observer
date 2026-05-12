@@ -64,6 +64,8 @@ Thumbs.db
 
 # Deployment-local connection artifacts
 .pi/
+**/.terraform/
+**/.terraform.lock.hcl
 deployments/*/info.txt
 deployments/*/*.pub
 deployments/*/*.pem

@@ -30,6 +30,15 @@ just run
 
 `just run` starts the collector dashboard with uvicorn live reload at `http://127.0.0.1:4319/`. It kills any existing process listening on port 4319 before starting. Use `just run <port>` to request a different fixed development port.
 
+To develop against the SQS-backed ingest buffer locally, use LocalStack:
+
+```bash
+just run-buffered          # starts LocalStack in Docker, then the collector against it
+just localstack-sqs        # start LocalStack only (foreground)
+```
+
+For a zero-dependency smoke test without SQS, pass `RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND=direct` or leave the env var unset (direct is the default).
+
 ## Runtime artifacts
 
 Generated caches, SQLite databases, logs, virtual environments, and local `.env` files are ignored by `.gitignore` and must not be committed.

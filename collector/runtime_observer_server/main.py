@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -11,8 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import create_router, session_user
 from .config import Settings
 from .db import Database
+from .ingest_queue import build_ingest_backend
 from .store import CollectorStore
 
+LOGGER = logging.getLogger(__name__)
 
 def _requires_session(path: str) -> bool:
     if path.startswith("/api/auth/") or path.startswith("/api/admin/"):
@@ -20,17 +26,58 @@ def _requires_session(path: str) -> bool:
     return path.startswith("/api/") or path in {"/docs", "/redoc", "/openapi.json"}
 
 
+async def _cleanup_loop(app_state: Any, settings: Settings) -> None:
+    while True:
+        await asyncio.sleep(max(30, settings.cleanup_interval_seconds))
+        try:
+            app_state.store.cleanup(
+                settings.retention_days,
+                min_log_minutes=settings.retention_min_log_minutes,
+                exception_window_minutes=settings.retention_exception_window_minutes,
+                raw_event_retention_hours=settings.raw_event_retention_hours,
+                regular_log_retention_hours=settings.regular_log_retention_hours,
+                trace_retention_days=settings.trace_retention_days,
+                duration_retention_days=settings.duration_retention_days,
+                exception_retention_days=settings.exception_retention_days,
+                aggregate_retention_days=settings.aggregate_retention_days,
+            )
+        except Exception:
+            LOGGER.exception("retention cleanup failed")
+            continue
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or Settings.from_env()
     database = Database(resolved.database_url or resolved.database_path)
     store = CollectorStore(database)
+    ingest_backend = build_ingest_backend(store, resolved)
     store.cleanup(
         resolved.retention_days,
         min_log_minutes=resolved.retention_min_log_minutes,
         exception_window_minutes=resolved.retention_exception_window_minutes,
+        raw_event_retention_hours=resolved.raw_event_retention_hours,
+        regular_log_retention_hours=resolved.regular_log_retention_hours,
+        trace_retention_days=resolved.trace_retention_days,
+        duration_retention_days=resolved.duration_retention_days,
+        exception_retention_days=resolved.exception_retention_days,
+        aggregate_retention_days=resolved.aggregate_retention_days,
     )
 
-    app = FastAPI(title="Runtime Observer Collector", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        ingest_backend.start()
+        cleanup_task = asyncio.create_task(_cleanup_loop(app.state, resolved))
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
+            ingest_backend.stop()
+
+    app = FastAPI(title="Runtime Observer Collector", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -41,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.database = database
     app.state.store = store
+    app.state.ingest_backend = ingest_backend
 
     @app.middleware("http")
     async def dashboard_session_auth(request: Request, call_next):
@@ -81,6 +129,20 @@ def main() -> None:
         retention_days=args.retention_days or env.retention_days,
         retention_min_log_minutes=env.retention_min_log_minutes,
         retention_exception_window_minutes=env.retention_exception_window_minutes,
+        raw_event_retention_hours=env.raw_event_retention_hours,
+        regular_log_retention_hours=env.regular_log_retention_hours,
+        trace_retention_days=env.trace_retention_days,
+        duration_retention_days=env.duration_retention_days,
+        exception_retention_days=env.exception_retention_days,
+        aggregate_retention_days=env.aggregate_retention_days,
+        cleanup_interval_seconds=env.cleanup_interval_seconds,
+        ingest_queue_backend=env.ingest_queue_backend,
+        ingest_queue_max_batches=env.ingest_queue_max_batches,
+        ingest_worker_batch_size=env.ingest_worker_batch_size,
+        ingest_worker_flush_interval_seconds=env.ingest_worker_flush_interval_seconds,
+        sqs_queue_url=env.sqs_queue_url,
+        sqs_endpoint_url=env.sqs_endpoint_url,
+        aws_region=env.aws_region,
     )
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
 

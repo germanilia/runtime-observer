@@ -15,6 +15,10 @@ KEY_PATH="${DEPLOY_DIR}/${KEY_NAME}.pem"
 INFO_PATH="${DEPLOY_DIR}/info.txt"
 NAME_PREFIX="runtime-observer-${ENVIRONMENT}"
 REMOTE_DIR="/opt/runtime-observer"
+INGEST_QUEUE_NAME="${NAME_PREFIX}-ingest"
+INGEST_DLQ_NAME="${NAME_PREFIX}-ingest-dlq"
+INSTANCE_ROLE_NAME="${NAME_PREFIX}-collector-role"
+INSTANCE_PROFILE_NAME="${NAME_PREFIX}-collector-profile"
 
 mkdir -p "${DEPLOY_DIR}"
 
@@ -84,6 +88,32 @@ aws_cmd ec2 authorize-security-group-ingress --group-id "${ALB_SG_ID}" --ip-perm
 aws_cmd ec2 authorize-security-group-ingress --group-id "${INSTANCE_SG_ID}" --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges='[{CidrIp=0.0.0.0/0,Description="SSH"}]' >/dev/null 2>&1 || true
 aws_cmd ec2 authorize-security-group-ingress --group-id "${INSTANCE_SG_ID}" --ip-permissions IpProtocol=tcp,FromPort="${APP_PORT}",ToPort="${APP_PORT}",UserIdGroupPairs="[{GroupId=${ALB_SG_ID},Description=\"Collector from ALB\"}]" >/dev/null 2>&1 || true
 
+ACCOUNT_ID=$(aws --profile "${AWS_PROFILE}" sts get-caller-identity --query Account --output text)
+DLQ_URL=$(aws_cmd sqs get-queue-url --queue-name "${INGEST_DLQ_NAME}" --query QueueUrl --output text 2>/dev/null || aws_cmd sqs create-queue --queue-name "${INGEST_DLQ_NAME}" --attributes MessageRetentionPeriod=1209600 --query QueueUrl --output text)
+DLQ_ARN=$(aws_cmd sqs get-queue-attributes --queue-url "${DLQ_URL}" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+REDRIVE_POLICY=$(python3 - <<PY
+import json
+print(json.dumps({"deadLetterTargetArn": "${DLQ_ARN}", "maxReceiveCount": "5"}))
+PY
+)
+INGEST_QUEUE_URL=$(aws_cmd sqs get-queue-url --queue-name "${INGEST_QUEUE_NAME}" --query QueueUrl --output text 2>/dev/null || aws_cmd sqs create-queue --queue-name "${INGEST_QUEUE_NAME}" --attributes "VisibilityTimeout=30,MessageRetentionPeriod=1209600,ReceiveMessageWaitTimeSeconds=10,RedrivePolicy=${REDRIVE_POLICY}" --query QueueUrl --output text)
+INGEST_QUEUE_ARN="arn:aws:sqs:${AWS_REGION}:${ACCOUNT_ID}:${INGEST_QUEUE_NAME}"
+
+if ! aws --profile "${AWS_PROFILE}" iam get-role --role-name "${INSTANCE_ROLE_NAME}" >/dev/null 2>&1; then
+  aws --profile "${AWS_PROFILE}" iam create-role --role-name "${INSTANCE_ROLE_NAME}" --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' >/dev/null
+fi
+POLICY_DOC=$(mktemp)
+cat > "${POLICY_DOC}" <<JSON
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sqs:SendMessage","sqs:ReceiveMessage","sqs:DeleteMessage","sqs:GetQueueAttributes"],"Resource":"${INGEST_QUEUE_ARN}"}]}
+JSON
+aws --profile "${AWS_PROFILE}" iam put-role-policy --role-name "${INSTANCE_ROLE_NAME}" --policy-name runtime-observer-sqs --policy-document "file://${POLICY_DOC}" >/dev/null
+rm -f "${POLICY_DOC}"
+if ! aws --profile "${AWS_PROFILE}" iam get-instance-profile --instance-profile-name "${INSTANCE_PROFILE_NAME}" >/dev/null 2>&1; then
+  aws --profile "${AWS_PROFILE}" iam create-instance-profile --instance-profile-name "${INSTANCE_PROFILE_NAME}" >/dev/null
+  aws --profile "${AWS_PROFILE}" iam add-role-to-instance-profile --instance-profile-name "${INSTANCE_PROFILE_NAME}" --role-name "${INSTANCE_ROLE_NAME}" >/dev/null
+  sleep 10
+fi
+
 TG_ARN=$(aws_cmd elbv2 describe-target-groups --names "${NAME_PREFIX}-tg" --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)
 if [[ -z "${TG_ARN}" || "${TG_ARN}" == "None" ]]; then
   TG_ARN=$(aws_cmd elbv2 create-target-group --name "${NAME_PREFIX}-tg" --protocol HTTP --port "${APP_PORT}" --vpc-id "${VPC_ID}" --target-type instance --health-check-protocol HTTP --health-check-path / --matcher HttpCode=200-399 --query 'TargetGroups[0].TargetGroupArn' --output text)
@@ -117,13 +147,18 @@ mkdir -p /opt/runtime-observer
 chown ec2-user:ec2-user /opt/runtime-observer
 usermod -aG docker ec2-user || true
 USERDATA
-  INSTANCE_ID=$(aws_cmd ec2 run-instances --image-id "${AMI_ID}" --instance-type "${INSTANCE_TYPE}" --key-name "${KEY_NAME}" --security-group-ids "${INSTANCE_SG_ID}" --subnet-id "${SUBNET_IDS[0]}" --associate-public-ip-address --user-data "file://${USER_DATA}" --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${NAME_PREFIX}},{Key=App,Value=runtime-observer},{Key=Environment,Value=${ENVIRONMENT}}]" --query 'Instances[0].InstanceId' --output text)
+  INSTANCE_ID=$(aws_cmd ec2 run-instances --image-id "${AMI_ID}" --instance-type "${INSTANCE_TYPE}" --key-name "${KEY_NAME}" --security-group-ids "${INSTANCE_SG_ID}" --subnet-id "${SUBNET_IDS[0]}" --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}" --associate-public-ip-address --user-data "file://${USER_DATA}" --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${NAME_PREFIX}},{Key=App,Value=runtime-observer},{Key=Environment,Value=${ENVIRONMENT}}]" --query 'Instances[0].InstanceId' --output text)
   rm -f "${USER_DATA}"
 else
   STATE=$(aws_cmd ec2 describe-instances --instance-ids "${INSTANCE_ID}" --query 'Reservations[0].Instances[0].State.Name' --output text)
   if [[ "${STATE}" == "stopped" ]]; then
     aws_cmd ec2 start-instances --instance-ids "${INSTANCE_ID}" >/dev/null
   fi
+fi
+
+PROFILE_ASSOCIATION=$(aws_cmd ec2 describe-iam-instance-profile-associations --filters Name=instance-id,Values="${INSTANCE_ID}" Name=state,Values=associated,associating --query 'IamInstanceProfileAssociations[0].AssociationId' --output text 2>/dev/null || true)
+if [[ -z "${PROFILE_ASSOCIATION}" || "${PROFILE_ASSOCIATION}" == "None" ]]; then
+  aws_cmd ec2 associate-iam-instance-profile --instance-id "${INSTANCE_ID}" --iam-instance-profile Name="${INSTANCE_PROFILE_NAME}" >/dev/null || true
 fi
 
 aws_cmd ec2 wait instance-running --instance-ids "${INSTANCE_ID}"
@@ -165,6 +200,9 @@ ENV_FILE=$(mktemp -t runtime-observer-env.XXXXXX)
 cat > "${ENV_FILE}" <<ENV
 POSTGRES_PASSWORD=${DB_PASSWORD}
 RUNTIME_OBSERVER_DATABASE_URL=postgresql://runtime_observer:${DB_PASSWORD_ENCODED}@db:5432/runtime_observer
+RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND=sqs
+RUNTIME_OBSERVER_SQS_QUEUE_URL=${INGEST_QUEUE_URL}
+AWS_DEFAULT_REGION=${AWS_REGION}
 ENV
 tar --exclude='.git' --exclude='.venv' --exclude='*/.venv' --exclude='node_modules' --exclude='*/node_modules' --exclude='**/__pycache__' --exclude='deployments/*/*.pem' --exclude='deployments/*/*.pub' --exclude='deployments/*/db-password.txt' -czf "${ARCHIVE}" .
 ssh "${SSH_OPTS[@]}" ec2-user@"${PUBLIC_IP}" "sudo mkdir -p ${REMOTE_DIR} && sudo chown ec2-user:ec2-user ${REMOTE_DIR}"
@@ -184,6 +222,8 @@ ssh=ssh -i ${KEY_PATH} ec2-user@${PUBLIC_IP}
 app_port=${APP_PORT}
 target_group_arn=${TG_ARN}
 certificate_arn=${CERTIFICATE_ARN}
+ingest_queue_url=${INGEST_QUEUE_URL}
+ingest_dlq_url=${DLQ_URL}
 INFO
 
 echo "Deployment complete: https://${DOMAIN_NAME}"

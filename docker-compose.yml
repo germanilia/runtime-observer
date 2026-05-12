@@ -1,4 +1,14 @@
 services:
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./scripts/localstack-init-sqs.sh:/etc/localstack/init/ready.d/runtime-observer-sqs.sh:ro
+
   collector:
     image: python:3.12-slim
     working_dir: /app/collector
@@ -11,9 +21,19 @@ services:
       RUNTIME_OBSERVER_API_KEY: ${RUNTIME_OBSERVER_API_KEY:-local-dev-key}
       RUNTIME_OBSERVER_DASHBOARD_USERNAME: ${RUNTIME_OBSERVER_DASHBOARD_USERNAME:-admin}
       RUNTIME_OBSERVER_DASHBOARD_PASSWORD: ${RUNTIME_OBSERVER_DASHBOARD_PASSWORD:-local-dev-key}
-      RUNTIME_OBSERVER_DB: /data/runtime_observer.sqlite3
+      RUNTIME_OBSERVER_DATABASE_URL: sqlite:////data/runtime_observer.sqlite3
       RUNTIME_OBSERVER_INSECURE_DEV: ${RUNTIME_OBSERVER_INSECURE_DEV:-false}
       RUNTIME_OBSERVER_RETENTION_DAYS: ${RUNTIME_OBSERVER_RETENTION_DAYS:-7}
+      RUNTIME_OBSERVER_REGULAR_LOG_RETENTION_HOURS: ${RUNTIME_OBSERVER_REGULAR_LOG_RETENTION_HOURS:-4}
+      RUNTIME_OBSERVER_RAW_EVENT_RETENTION_HOURS: ${RUNTIME_OBSERVER_RAW_EVENT_RETENTION_HOURS:-24}
+      RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND: ${RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND:-sqs}
+      RUNTIME_OBSERVER_SQS_ENDPOINT_URL: ${RUNTIME_OBSERVER_SQS_ENDPOINT_URL:-http://localstack:4566}
+      RUNTIME_OBSERVER_SQS_QUEUE_URL: ${RUNTIME_OBSERVER_SQS_QUEUE_URL:-http://localstack:4566/000000000000/runtime-observer-ingest}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    depends_on:
+      - localstack
     ports:
       - "4319:4319"
     command: >

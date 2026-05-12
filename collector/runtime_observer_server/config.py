@@ -21,6 +21,20 @@ class Settings:
     retention_days: int = 7
     retention_min_log_minutes: int = 60
     retention_exception_window_minutes: int = 180
+    raw_event_retention_hours: int = 24
+    regular_log_retention_hours: int = 4
+    trace_retention_days: int = 3
+    duration_retention_days: int = 3
+    exception_retention_days: int = 90
+    aggregate_retention_days: int = 365
+    cleanup_interval_seconds: int = 300
+    ingest_queue_backend: str = "direct"
+    ingest_queue_max_batches: int = 1000
+    ingest_worker_batch_size: int = 1000
+    ingest_worker_flush_interval_seconds: float = 1.0
+    sqs_queue_url: str = ""
+    sqs_endpoint_url: str = ""
+    aws_region: str = "us-east-1"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +56,18 @@ class Settings:
             retention_days=int(os.getenv("RUNTIME_OBSERVER_RETENTION_DAYS", "7")),
             retention_min_log_minutes=int(os.getenv("RUNTIME_OBSERVER_RETENTION_MIN_LOG_MINUTES", "60")),
             retention_exception_window_minutes=int(os.getenv("RUNTIME_OBSERVER_RETENTION_EXCEPTION_WINDOW_MINUTES", "180")),
+            raw_event_retention_hours=int(os.getenv("RUNTIME_OBSERVER_RAW_EVENT_RETENTION_HOURS", "24")),
+            regular_log_retention_hours=int(os.getenv("RUNTIME_OBSERVER_REGULAR_LOG_RETENTION_HOURS", "4")),
+            trace_retention_days=int(os.getenv("RUNTIME_OBSERVER_TRACE_RETENTION_DAYS", "3")),
+            duration_retention_days=int(os.getenv("RUNTIME_OBSERVER_DURATION_RETENTION_DAYS", "3")),
+            exception_retention_days=int(os.getenv("RUNTIME_OBSERVER_EXCEPTION_RETENTION_DAYS", "90")),
+            aggregate_retention_days=int(os.getenv("RUNTIME_OBSERVER_AGGREGATE_RETENTION_DAYS", "365")),
+            cleanup_interval_seconds=int(os.getenv("RUNTIME_OBSERVER_CLEANUP_INTERVAL_SECONDS", "300")),
+            ingest_queue_backend=os.getenv("RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND", "direct"),
+            ingest_queue_max_batches=int(os.getenv("RUNTIME_OBSERVER_INGEST_QUEUE_MAX_BATCHES", "1000")),
+            ingest_worker_batch_size=int(os.getenv("RUNTIME_OBSERVER_INGEST_WORKER_BATCH_SIZE", "1000")),
+            ingest_worker_flush_interval_seconds=float(os.getenv("RUNTIME_OBSERVER_INGEST_WORKER_FLUSH_INTERVAL_SECONDS", "1.0")),
+            sqs_queue_url=os.getenv("RUNTIME_OBSERVER_SQS_QUEUE_URL", ""),
+            sqs_endpoint_url=os.getenv("RUNTIME_OBSERVER_SQS_ENDPOINT_URL", ""),
+            aws_region=os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1")),
         )

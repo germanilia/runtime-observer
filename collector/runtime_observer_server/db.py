@@ -66,6 +66,24 @@ CREATE TABLE IF NOT EXISTS dependencies (
 CREATE TABLE IF NOT EXISTS dependency_durations (
   dependency_id TEXT NOT NULL, duration_ms REAL NOT NULL, timestamp TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_dependency_durations_dep ON dependency_durations(dependency_id, timestamp);
+CREATE TABLE IF NOT EXISTS route_metrics_hourly (
+  route_id TEXT NOT NULL, app_id TEXT NOT NULL, bucket_start TEXT NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0,
+  total_duration_ms REAL NOT NULL DEFAULT 0, min_duration_ms REAL, max_duration_ms REAL,
+  PRIMARY KEY(route_id, bucket_start)
+);
+CREATE TABLE IF NOT EXISTS dependency_metrics_hourly (
+  dependency_id TEXT NOT NULL, app_id TEXT NOT NULL, bucket_start TEXT NOT NULL,
+  call_count INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0,
+  total_duration_ms REAL NOT NULL DEFAULT 0, min_duration_ms REAL, max_duration_ms REAL,
+  PRIMARY KEY(dependency_id, bucket_start)
+);
+CREATE TABLE IF NOT EXISTS log_metrics_hourly (
+  app_id TEXT NOT NULL, route_id TEXT, level TEXT NOT NULL, bucket_start TEXT NOT NULL,
+  log_count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(app_id, route_id, level, bucket_start)
+);
 CREATE TABLE IF NOT EXISTS llm_usage (
   id TEXT PRIMARY KEY, app_id TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
   route_id TEXT, call_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -274,7 +292,7 @@ class Database:
         conn.execute("DROP TABLE apps_legacy_unique_service_name")
 
     def clear(self) -> None:
-        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "llm_usage", "user_preferences", "project_api_keys", "retention_pins"]
+        tables = ["events", "apps", "routes", "route_durations", "traces", "spans", "exceptions", "logs", "dependencies", "dependency_durations", "route_metrics_hourly", "dependency_metrics_hourly", "log_metrics_hourly", "llm_usage", "user_preferences", "project_api_keys", "retention_pins"]
         with self.connect() as conn:
             for table in tables:
                 conn.execute(f"DELETE FROM {table}")

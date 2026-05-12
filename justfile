@@ -61,6 +61,16 @@ run PORT="4319":
 run-collector PORT="4319":
     just run {{ PORT }}
 
+# Start LocalStack SQS for local buffered-ingest development.
+localstack-sqs:
+    docker compose up localstack
+
+# Run collector through the LocalStack-backed SQS ingest buffer.
+run-buffered PORT="4319":
+    docker compose up localstack -d
+    just _kill-port {{ PORT }}
+    cd collector && RUNTIME_OBSERVER_INSECURE_DEV=true RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND=sqs RUNTIME_OBSERVER_SQS_ENDPOINT_URL=http://localhost:4566 RUNTIME_OBSERVER_SQS_QUEUE_URL=http://localhost:4566/000000000000/runtime-observer-ingest AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 uv run uvicorn runtime_observer_server.main:app --reload --host 127.0.0.1 --port {{ PORT }} --no-access-log
+
 # Run all tests. Each test recipe uses dynamically allocated ports so multiple
 # test runs can execute side by side without fighting over the dev port.
 test:

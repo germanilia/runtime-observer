@@ -9,6 +9,8 @@
 
 The Python SDK `RUNTIME_OBSERVER_ENDPOINT` should be the collector base URL, for example `http://127.0.0.1:4319`; the SDK appends `/v1/ingest`. Set `RUNTIME_OBSERVER_PROJECT_NAME`, `RUNTIME_OBSERVER_SERVICE_NAME`, and `RUNTIME_OBSERVER_API_KEY` in each application.
 
+Both ingest endpoints respond with `{ "accepted": N, "rejected": N, "queued": bool, "server_time": "..." }`. When `queued` is `true` the events have been placed on the ingest buffer (SQS or memory) and will be written to the database by a background worker; `false` means they were written synchronously. Error responses: `429` queue full, `413` single event exceeds SQS message size limit, `503` ingest backend unavailable.
+
 ## Dashboard and query APIs
 
 Dashboard routes require a session cookie unless insecure dev mode is enabled. The first `POST /api/auth/login` creates the admin user when the users table is empty.

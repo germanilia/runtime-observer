@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import re
@@ -11,6 +12,9 @@ from uuid import uuid4
 from .db import Database
 
 SECRET_KEYS = re.compile(r"password|passwd|secret|token|api_?key|authorization|cookie|credential|private_key|access_key|refresh_token|id_token", re.I)
+_BATCH_ROUTES: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar("runtime_observer_batch_routes", default=None)
+_BATCH_DEPS: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar("runtime_observer_batch_deps", default=None)
+
 SECRET_VALUES = [
     re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]+", re.I),
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
@@ -31,6 +35,11 @@ def stable_id(*parts: Any) -> str:
 
 def dumps(value: Any) -> str:
     return json.dumps(redact(value), separators=(",", ":"), ensure_ascii=False)
+
+
+def hour_bucket(timestamp: str) -> str:
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    return parsed.astimezone(UTC).replace(minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def redact(value: Any, depth: int = 0) -> Any:
@@ -71,15 +80,39 @@ class CollectorStore:
         accepted = 0
         rejected = 0
         with self.database.connect() as conn:
-            for event in events:
-                try:
-                    self._ingest_one(conn, event)
-                    accepted += 1
-                except (KeyError, TypeError, ValueError, sqlite3.Error):
-                    rejected += 1
+            touched_routes: set[str] = set()
+            touched_deps: set[str] = set()
+            route_token = _BATCH_ROUTES.set(touched_routes)
+            dep_token = _BATCH_DEPS.set(touched_deps)
+            try:
+                for event in events:
+                    try:
+                        self._ingest_one(conn, event)
+                        accepted += 1
+                    except (KeyError, TypeError, ValueError, sqlite3.Error):
+                        rejected += 1
+                for route_id in touched_routes:
+                    self._refresh_route(conn, route_id)
+                for dep_id in touched_deps:
+                    self._refresh_dependency(conn, dep_id)
+            finally:
+                _BATCH_ROUTES.reset(route_token)
+                _BATCH_DEPS.reset(dep_token)
         return {"accepted": accepted, "rejected": rejected, "server_time": now_iso()}
 
-    def cleanup(self, retention_days: int, *, min_log_minutes: int = 60, exception_window_minutes: int = 180) -> None:
+    def cleanup(
+        self,
+        retention_days: int,
+        *,
+        min_log_minutes: int = 60,
+        exception_window_minutes: int = 180,
+        raw_event_retention_hours: int | None = None,
+        regular_log_retention_hours: int | None = None,
+        trace_retention_days: int | None = None,
+        duration_retention_days: int | None = None,
+        exception_retention_days: int | None = None,
+        aggregate_retention_days: int | None = None,
+    ) -> None:
         with self.database.connect() as conn:
             stored = self._stored_retention_settings(conn)
             retention_days = int(stored.get("retention_days", retention_days))
@@ -87,8 +120,23 @@ class CollectorStore:
             exception_window_minutes = int(stored.get("exception_window_minutes", exception_window_minutes))
             now = datetime.now(UTC)
             cutoff = (now - timedelta(days=retention_days)).isoformat().replace("+00:00", "Z")
-            log_floor = (now - timedelta(minutes=max(min_log_minutes, 60))).isoformat().replace("+00:00", "Z")
+            raw_event_cutoff = (now - timedelta(hours=raw_event_retention_hours or retention_days * 24)).isoformat().replace("+00:00", "Z")
+            regular_log_cutoff = (now - timedelta(hours=regular_log_retention_hours or max(min_log_minutes, 60) / 60)).isoformat().replace("+00:00", "Z")
+            trace_cutoff = (now - timedelta(days=trace_retention_days or retention_days)).isoformat().replace("+00:00", "Z")
+            duration_cutoff = (now - timedelta(days=duration_retention_days or retention_days)).isoformat().replace("+00:00", "Z")
+            exception_cutoff = (now - timedelta(days=exception_retention_days or max(retention_days, 30))).isoformat().replace("+00:00", "Z")
+            aggregate_cutoff = (now - timedelta(days=aggregate_retention_days or 365)).isoformat().replace("+00:00", "Z")
             self._prepare_retention_protection(conn, now, exception_window_minutes)
+            conn.execute(
+                """
+                DELETE FROM logs
+                WHERE timestamp < ?
+                  AND UPPER(COALESCE(level,'')) NOT IN ('ERROR','CRITICAL')
+                  AND id NOT IN (SELECT id FROM protected_logs)
+                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                """,
+                (regular_log_cutoff,),
+            )
             conn.execute(
                 """
                 DELETE FROM logs
@@ -96,7 +144,7 @@ class CollectorStore:
                   AND id NOT IN (SELECT id FROM protected_logs)
                   AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
                 """,
-                (cutoff, log_floor),
+                (cutoff, regular_log_cutoff),
             )
             conn.execute(
                 """
@@ -104,17 +152,17 @@ class CollectorStore:
                 WHERE timestamp < ?
                   AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
                 """,
-                (cutoff,),
+                (raw_event_cutoff,),
             )
-            conn.execute("DELETE FROM route_durations WHERE timestamp < ?", (cutoff,))
-            conn.execute("DELETE FROM dependency_durations WHERE timestamp < ?", (cutoff,))
+            conn.execute("DELETE FROM route_durations WHERE timestamp < ?", (duration_cutoff,))
+            conn.execute("DELETE FROM dependency_durations WHERE timestamp < ?", (duration_cutoff,))
             conn.execute(
                 """
                 DELETE FROM spans
                 WHERE COALESCE(finished_at, started_at) < ?
                   AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
                 """,
-                (cutoff,),
+                (trace_cutoff,),
             )
             conn.execute(
                 """
@@ -122,8 +170,12 @@ class CollectorStore:
                 WHERE COALESCE(finished_at, started_at) < ?
                   AND COALESCE(id, '') NOT IN (SELECT trace_id FROM protected_traces)
                 """,
-                (cutoff,),
+                (trace_cutoff,),
             )
+            conn.execute("DELETE FROM exceptions WHERE last_seen < ?", (exception_cutoff,))
+            conn.execute("DELETE FROM route_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
+            conn.execute("DELETE FROM dependency_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
+            conn.execute("DELETE FROM log_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
 
     def _stored_retention_settings(self, conn: sqlite3.Connection) -> dict[str, Any]:
         row = conn.execute("SELECT value_json FROM collector_settings WHERE key='retention'").fetchone()
@@ -180,10 +232,12 @@ class CollectorStore:
             raise ValueError("event.payload must be an object")
         self._upsert_app(conn, app_id, service_name, service, timestamp, payload if kind == "app_started" else {})
         event_id = str(event.get("event_id") or uuid4())
-        conn.execute(
+        cursor = conn.execute(
             "INSERT OR IGNORE INTO events(id, app_id, trace_id, span_id, parent_span_id, kind, timestamp, payload_json, raw_json) VALUES(?,?,?,?,?,?,?,?,?)",
             (event_id, app_id, event.get("trace_id"), event.get("span_id"), event.get("parent_span_id"), kind, timestamp, dumps(payload), dumps(event)),
         )
+        if cursor.rowcount == 0:
+            return
         handler = getattr(self, f"_handle_{kind}", None)
         if handler:
             handler(conn, app_id, event, payload, timestamp)
@@ -242,7 +296,12 @@ class CollectorStore:
             """,
             (trace_id, app_id, route_id, timestamp, duration, status_code, has_error),
         )
-        self._refresh_route(conn, route_id)
+        self._upsert_route_metric(conn, app_id, route_id, timestamp, duration, has_error)
+        touched_routes = _BATCH_ROUTES.get()
+        if touched_routes is None:
+            self._refresh_route(conn, route_id)
+        else:
+            touched_routes.add(route_id)
 
     def _handle_span_started(self, conn: sqlite3.Connection, app_id: str, event: dict[str, Any], payload: dict[str, Any], timestamp: str) -> None:
         self._insert_span(conn, app_id, event, payload, timestamp, None)
@@ -274,10 +333,12 @@ class CollectorStore:
     def _handle_log_record(self, conn: sqlite3.Connection, app_id: str, event: dict[str, Any], payload: dict[str, Any], timestamp: str) -> None:
         method, route_pattern = self._route_values(payload)
         route_id = None if route_pattern == "unknown" else self._upsert_route(conn, app_id, method, route_pattern, timestamp)
+        level = str(payload.get("level") or "INFO").upper()
         conn.execute(
             "INSERT OR IGNORE INTO logs(id, app_id, trace_id, span_id, route_id, timestamp, level, logger_name, message, source_file, source_function, source_line, structured_json, exception_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (str(event.get("event_id") or uuid4()), app_id, event.get("trace_id"), event.get("span_id"), route_id, timestamp, payload.get("level"), payload.get("logger_name") or payload.get("logger"), redact(payload.get("message") or ""), payload.get("source_file"), payload.get("source_function"), payload.get("source_line"), dumps(payload.get("structured") or {}), dumps(payload.get("exception") or {})),
+            (str(event.get("event_id") or uuid4()), app_id, event.get("trace_id"), event.get("span_id"), route_id, timestamp, level, payload.get("logger_name") or payload.get("logger"), redact(payload.get("message") or ""), payload.get("source_file"), payload.get("source_function"), payload.get("source_line"), dumps(payload.get("structured") or {}), dumps(payload.get("exception") or {})),
         )
+        self._upsert_log_metric(conn, app_id, route_id, level, timestamp)
 
     def _handle_dependency_inventory(self, conn: sqlite3.Connection, app_id: str, event: dict[str, Any], payload: dict[str, Any], timestamp: str) -> None:
         for dep in payload.get("dependencies") or []:
@@ -321,21 +382,68 @@ class CollectorStore:
         )
         if duration:
             conn.execute("INSERT INTO dependency_durations(dependency_id, duration_ms, timestamp) VALUES(?,?,?)", (dep_id, duration, timestamp))
-            self._refresh_dependency(conn, dep_id)
+            self._upsert_dependency_metric(conn, app_id, dep_id, timestamp, duration, error)
+            touched_deps = _BATCH_DEPS.get()
+            if touched_deps is None:
+                self._refresh_dependency(conn, dep_id)
+            else:
+                touched_deps.add(dep_id)
         return dep_id
 
     def _refresh_route(self, conn: sqlite3.Connection, route_id: str) -> None:
-        rows = conn.execute("SELECT duration_ms, status_code FROM route_durations WHERE route_id=? ORDER BY duration_ms", (route_id,)).fetchall()
+        totals = conn.execute("SELECT COALESCE(SUM(request_count),0) call_count, COALESCE(SUM(error_count),0) error_count FROM route_metrics_hourly WHERE route_id=?", (route_id,)).fetchone()
+        rows = conn.execute("SELECT duration_ms FROM (SELECT duration_ms FROM route_durations WHERE route_id=? ORDER BY timestamp DESC LIMIT 10000) ORDER BY duration_ms", (route_id,)).fetchall()
         if not rows:
             return
         durations = [float(row["duration_ms"]) for row in rows]
         p50 = durations[int((len(durations) - 1) * 0.50)]
         p95 = durations[int((len(durations) - 1) * 0.95)]
-        errors = sum(1 for row in rows if int(row["status_code"] or 0) >= 500)
-        conn.execute("UPDATE routes SET call_count=?, error_count=?, p50_ms=?, p95_ms=? WHERE id=?", (len(rows), errors, p50, p95, route_id))
+        conn.execute("UPDATE routes SET call_count=?, error_count=?, p50_ms=?, p95_ms=? WHERE id=?", (int(totals["call_count"] or 0), int(totals["error_count"] or 0), p50, p95, route_id))
 
     def _refresh_dependency(self, conn: sqlite3.Connection, dep_id: str) -> None:
-        rows = conn.execute("SELECT duration_ms FROM dependency_durations WHERE dependency_id=? ORDER BY duration_ms", (dep_id,)).fetchall()
+        rows = conn.execute("SELECT duration_ms FROM dependency_durations WHERE dependency_id=? ORDER BY duration_ms LIMIT 10000", (dep_id,)).fetchall()
         if rows:
             p95 = float(rows[int((len(rows) - 1) * 0.95)]["duration_ms"])
             conn.execute("UPDATE dependencies SET p95_duration_ms=? WHERE id=?", (p95, dep_id))
+
+    def _upsert_route_metric(self, conn: sqlite3.Connection, app_id: str, route_id: str, timestamp: str, duration: float, has_error: int) -> None:
+        bucket = hour_bucket(timestamp)
+        conn.execute(
+            """
+            INSERT INTO route_metrics_hourly(route_id, app_id, bucket_start, request_count, error_count, total_duration_ms, min_duration_ms, max_duration_ms)
+            VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(route_id, bucket_start) DO UPDATE SET
+              request_count=route_metrics_hourly.request_count+1,
+              error_count=route_metrics_hourly.error_count+excluded.error_count,
+              total_duration_ms=route_metrics_hourly.total_duration_ms+excluded.total_duration_ms,
+              min_duration_ms=CASE WHEN route_metrics_hourly.min_duration_ms IS NULL OR excluded.min_duration_ms < route_metrics_hourly.min_duration_ms THEN excluded.min_duration_ms ELSE route_metrics_hourly.min_duration_ms END,
+              max_duration_ms=CASE WHEN route_metrics_hourly.max_duration_ms IS NULL OR excluded.max_duration_ms > route_metrics_hourly.max_duration_ms THEN excluded.max_duration_ms ELSE route_metrics_hourly.max_duration_ms END
+            """,
+            (route_id, app_id, bucket, 1, has_error, duration, duration, duration),
+        )
+
+    def _upsert_dependency_metric(self, conn: sqlite3.Connection, app_id: str, dep_id: str, timestamp: str, duration: float, error: bool) -> None:
+        bucket = hour_bucket(timestamp)
+        conn.execute(
+            """
+            INSERT INTO dependency_metrics_hourly(dependency_id, app_id, bucket_start, call_count, error_count, total_duration_ms, min_duration_ms, max_duration_ms)
+            VALUES(?,?,?,?,?,?,?,?)
+            ON CONFLICT(dependency_id, bucket_start) DO UPDATE SET
+              call_count=dependency_metrics_hourly.call_count+1,
+              error_count=dependency_metrics_hourly.error_count+excluded.error_count,
+              total_duration_ms=dependency_metrics_hourly.total_duration_ms+excluded.total_duration_ms,
+              min_duration_ms=CASE WHEN dependency_metrics_hourly.min_duration_ms IS NULL OR excluded.min_duration_ms < dependency_metrics_hourly.min_duration_ms THEN excluded.min_duration_ms ELSE dependency_metrics_hourly.min_duration_ms END,
+              max_duration_ms=CASE WHEN dependency_metrics_hourly.max_duration_ms IS NULL OR excluded.max_duration_ms > dependency_metrics_hourly.max_duration_ms THEN excluded.max_duration_ms ELSE dependency_metrics_hourly.max_duration_ms END
+            """,
+            (dep_id, app_id, bucket, 1, int(error), duration, duration, duration),
+        )
+
+    def _upsert_log_metric(self, conn: sqlite3.Connection, app_id: str, route_id: str | None, level: str, timestamp: str) -> None:
+        bucket = hour_bucket(timestamp)
+        conn.execute(
+            """
+            INSERT INTO log_metrics_hourly(app_id, route_id, level, bucket_start, log_count) VALUES(?,?,?,?,?)
+            ON CONFLICT(app_id, route_id, level, bucket_start) DO UPDATE SET log_count=log_metrics_hourly.log_count+1
+            """,
+            (app_id, route_id or "", level, bucket, 1),
+        )
