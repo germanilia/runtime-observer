@@ -185,10 +185,11 @@ def test_project_api_keys_scope_ingest_by_project(tmp_path):
 
     wrong_project_event = dict(correlated_events()[-2])
     response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": [wrong_project_event]})
-    assert response.status_code == 403
+    assert response.status_code == 200
 
     projects = client.get("/api/projects").json()
     assert any(project["project_name"] == "shop" for project in projects)
+    assert not any(project["project_name"] == "other" for project in projects)
     keys = client.get("/api/projects/shop/api-keys").json()
     assert keys[0]["prefix"] == created["prefix"]
     assert keys[0]["name"] == "shop"

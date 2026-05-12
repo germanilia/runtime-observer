@@ -42,18 +42,26 @@ def _event_projects(events: list[dict[str, Any]]) -> set[str]:
         if isinstance(service, dict):
             projects.add(str(service.get("project_name") or "default"))
     return projects
-def require_ingest_auth(events: list[dict[str, Any]], request: Request, api_key: str | None = None, db: Database | None = None, settings: Settings | None = None) -> None:
+def require_ingest_auth(events: list[dict[str, Any]], request: Request, api_key: str | None = None, db: Database | None = None, settings: Settings | None = None) -> str | None:
     resolved_settings = settings or request.app.state.settings
     if resolved_settings.insecure_dev_mode:
-        return
+        return None
     token = api_key or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Runtime Observer API key is required")
-    project_name = _project_from_api_key(token, db or request.app.state.database, resolved_settings)
-    if project_name is not None:
-        projects = _event_projects(events)
-        if projects and projects != {project_name}:
-            raise HTTPException(status_code=403, detail=f"API key is scoped to project {project_name}")
+    return _project_from_api_key(token, db or request.app.state.database, resolved_settings)
+
+
+def apply_project_scope(events: list[dict[str, Any]], project_name: str | None) -> list[dict[str, Any]]:
+    if project_name is None:
+        return events
+    scoped_events: list[dict[str, Any]] = []
+    for event in events:
+        service = event.get("service") if isinstance(event, dict) else None
+        service_data = dict(service) if isinstance(service, dict) else {}
+        service_data["project_name"] = project_name
+        scoped_events.append({**event, "service": service_data})
+    return scoped_events
 def require_bearer(request: Request, settings: Settings = Depends(get_settings)) -> None:
     if settings.insecure_dev_mode:
         return
@@ -537,9 +545,10 @@ def create_router() -> APIRouter:
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
-        require_ingest_auth(events, request, db=db, settings=settings)
+        project_name = require_ingest_auth(events, request, db=db, settings=settings)
+        scoped_events = apply_project_scope(events, project_name)
         try:
-            return request.app.state.ingest_backend.enqueue(events).to_response()
+            return request.app.state.ingest_backend.enqueue(scoped_events).to_response()
         except IngestQueueError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -549,9 +558,10 @@ def create_router() -> APIRouter:
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
-        require_ingest_auth(events, request, api_key=api_key, db=db, settings=settings)
+        project_name = require_ingest_auth(events, request, api_key=api_key, db=db, settings=settings)
+        scoped_events = apply_project_scope(events, project_name)
         try:
-            return request.app.state.ingest_backend.enqueue(events).to_response()
+            return request.app.state.ingest_backend.enqueue(scoped_events).to_response()
         except IngestQueueError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
