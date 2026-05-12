@@ -7,6 +7,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+import boto3
+
 from .store import CollectorStore, now_iso
 
 MAX_SQS_MESSAGE_BYTES = 240 * 1024
@@ -127,10 +129,6 @@ class SqsIngestBackend:
         self.flush_interval_seconds = max(0.05, flush_interval_seconds)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        try:
-            import boto3  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise RuntimeError("SQS ingest backend requires boto3") from exc
         self.client = boto3.client("sqs", endpoint_url=endpoint_url or None, region_name=region_name)
 
     def start(self) -> None:
