@@ -4,8 +4,8 @@
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/v1/ingest` | Bearer API key | Accepts `{ "events": [...] }` telemetry batches from SDKs. Use a project-scoped key generated in the UI and stored hashed in the DB. |
-| `POST` | `/v1/ingest/browser` | `?api_key=...` query key unless insecure dev mode | Browser/Node helper ingestion endpoint. Project-scoped keys must match `service.project_name`. |
+| `POST` | `/v1/ingest` | Bearer API key | Accepts `{ "events": [...] }` telemetry batches from SDKs. Use a project-scoped key generated in the UI and stored hashed in the DB. When a project-scoped key is used, `service.project_name` in every event is overridden to match the key's project regardless of what the SDK sent. |
+| `POST` | `/v1/ingest/browser` | `?api_key=...` query key unless insecure dev mode | Browser/Node helper ingestion endpoint. When a project-scoped key is used, `service.project_name` is overridden to match the key's project. |
 
 The Python SDK `RUNTIME_OBSERVER_ENDPOINT` should be the collector base URL, for example `http://127.0.0.1:4319`; the SDK appends `/v1/ingest`. Set `RUNTIME_OBSERVER_PROJECT_NAME`, `RUNTIME_OBSERVER_SERVICE_NAME`, and `RUNTIME_OBSERVER_API_KEY` in each application.
 
