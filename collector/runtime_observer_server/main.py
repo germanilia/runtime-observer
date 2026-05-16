@@ -30,7 +30,8 @@ async def _cleanup_loop(app_state: Any, settings: Settings) -> None:
     while True:
         await asyncio.sleep(max(30, settings.cleanup_interval_seconds))
         try:
-            app_state.store.cleanup(
+            await asyncio.to_thread(
+                app_state.store.cleanup,
                 settings.retention_days,
                 min_log_minutes=settings.retention_min_log_minutes,
                 exception_window_minutes=settings.retention_exception_window_minutes,
@@ -51,17 +52,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database(resolved.database_url or resolved.database_path)
     store = CollectorStore(database)
     ingest_backend = build_ingest_backend(store, resolved)
-    store.cleanup(
-        resolved.retention_days,
-        min_log_minutes=resolved.retention_min_log_minutes,
-        exception_window_minutes=resolved.retention_exception_window_minutes,
-        raw_event_retention_hours=resolved.raw_event_retention_hours,
-        regular_log_retention_hours=resolved.regular_log_retention_hours,
-        trace_retention_days=resolved.trace_retention_days,
-        duration_retention_days=resolved.duration_retention_days,
-        exception_retention_days=resolved.exception_retention_days,
-        aggregate_retention_days=resolved.aggregate_retention_days,
-    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

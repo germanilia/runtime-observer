@@ -211,7 +211,7 @@ RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND=sqs
 RUNTIME_OBSERVER_SQS_QUEUE_URL=${INGEST_QUEUE_URL}
 AWS_DEFAULT_REGION=${AWS_REGION}
 ENV
-tar --exclude='.git' --exclude='.venv' --exclude='*/.venv' --exclude='node_modules' --exclude='*/node_modules' --exclude='**/__pycache__' --exclude='deployments/*/*.pem' --exclude='deployments/*/*.pub' --exclude='deployments/*/db-password.txt' -czf "${ARCHIVE}" .
+tar --exclude='.git' --exclude='.venv' --exclude='*/.venv' --exclude='node_modules' --exclude='*/node_modules' --exclude='**/__pycache__' --exclude='*.sqlite3' --exclude='*.sqlite3-*' --exclude='*.db' --exclude='*.log' --exclude='deployments/*/*.pem' --exclude='deployments/*/*.pub' --exclude='deployments/*/db-password.txt' -czf "${ARCHIVE}" .
 ssh "${SSH_OPTS[@]}" ec2-user@"${PUBLIC_IP}" "sudo mkdir -p ${REMOTE_DIR} && sudo chown ec2-user:ec2-user ${REMOTE_DIR}"
 scp "${SSH_OPTS[@]}" "${ARCHIVE}" ec2-user@"${PUBLIC_IP}":/tmp/runtime-observer.tar.gz
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" ec2-user@"${PUBLIC_IP}":/tmp/runtime-observer.env

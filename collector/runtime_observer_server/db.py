@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_app_kind_time ON events(app_id, kind, timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_trace ON events(app_id, trace_id);
+CREATE INDEX IF NOT EXISTS idx_events_trace_time ON events(trace_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_kind_time ON events(kind, timestamp);
 CREATE TABLE IF NOT EXISTS routes (
   id TEXT PRIMARY KEY, app_id TEXT NOT NULL, method TEXT NOT NULL,
   route_pattern TEXT NOT NULL, call_count INTEGER NOT NULL DEFAULT 0,
@@ -38,18 +40,21 @@ CREATE TABLE IF NOT EXISTS traces (
   finished_at TEXT, duration_ms REAL, status_code INTEGER, has_error INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY(id, app_id)
 );
+CREATE INDEX IF NOT EXISTS idx_traces_route_app ON traces(route_id, app_id);
 CREATE TABLE IF NOT EXISTS spans (
   id INTEGER PRIMARY KEY AUTOINCREMENT, trace_id TEXT, app_id TEXT NOT NULL,
   span_id TEXT, parent_span_id TEXT, name TEXT, kind TEXT, started_at TEXT,
   finished_at TEXT, duration_ms REAL, status TEXT, payload_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(app_id, trace_id);
+CREATE INDEX IF NOT EXISTS idx_spans_trace_time ON spans(trace_id, started_at);
 CREATE TABLE IF NOT EXISTS exceptions (
   id TEXT PRIMARY KEY, app_id TEXT NOT NULL, fingerprint TEXT NOT NULL,
   type TEXT NOT NULL, normalized_message TEXT NOT NULL, first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1, sample_trace_id TEXT,
   sample_payload_json TEXT NOT NULL, UNIQUE(app_id, fingerprint)
 );
+CREATE INDEX IF NOT EXISTS idx_exceptions_sample_trace ON exceptions(sample_trace_id, last_seen);
 CREATE TABLE IF NOT EXISTS logs (
   id TEXT PRIMARY KEY, app_id TEXT NOT NULL, trace_id TEXT, span_id TEXT,
   route_id TEXT, timestamp TEXT NOT NULL, level TEXT, logger_name TEXT,
@@ -57,6 +62,9 @@ CREATE TABLE IF NOT EXISTS logs (
   structured_json TEXT NOT NULL, exception_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_logs_search ON logs(app_id, timestamp, level, logger_name, trace_id, route_id);
+CREATE INDEX IF NOT EXISTS idx_logs_trace_time ON logs(trace_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_logs_time_trace ON logs(timestamp, trace_id);
+CREATE INDEX IF NOT EXISTS idx_logs_route_app ON logs(route_id, app_id);
 CREATE TABLE IF NOT EXISTS dependencies (
   id TEXT PRIMARY KEY, app_id TEXT NOT NULL, dependency_type TEXT NOT NULL,
   target TEXT NOT NULL, operation TEXT, call_count INTEGER NOT NULL DEFAULT 0,
@@ -212,8 +220,9 @@ class Database:
             raw_conn = psycopg.connect(self.url, row_factory=dict_row)
             conn: Any = PostgresConnection(raw_conn)
         else:
-            conn = sqlite3.connect(self.path)
+            conn = sqlite3.connect(self.path, timeout=30)
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000")
         try:
             if not self.is_postgres:
                 self._apply_schema(conn)
@@ -235,8 +244,9 @@ class Database:
             finally:
                 conn.close()
             return
-        with sqlite3.connect(self.path) as conn:
+        with sqlite3.connect(self.path, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000")
             self._apply_schema(conn)
             conn.commit()
 

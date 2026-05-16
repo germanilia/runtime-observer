@@ -808,7 +808,7 @@ function renderErrors(){
 
 // ── COPY STATE ──
 function logCopyState(logId){return (copyCache.get('log:'+logId)||{}).status||'missing';}
-function logCopyLabel(logId){var s=logCopyState(logId);if(s==='ready')return 'Copy for AI';if(s==='error')return 'Retry prepare';return 'Preparing...';}
+function logCopyLabel(logId){var s=logCopyState(logId);if(s==='loading')return 'Preparing...';if(s==='error')return 'Retry prepare';return 'Copy for AI';}
 
 // ── RENDER LOGS ──
 function renderLogs(target,rows){
@@ -820,11 +820,10 @@ function renderLogs(target,rows){
   $(target).innerHTML=rows.length?rows.map(function(l){
     var state=logCopyState(l.id);
     var level=l.level||'LOG';
-    return '<div class="log-item" data-log=\''+esc(JSON.stringify(l))+'\'><div class="log-header"><span class="level-badge level-'+esc(level)+'">'+esc(level)+'</span>'+(l.service_name?'<span class="svc-badge" title="'+esc(l.service_name)+'">'+esc(l.service_name)+'</span>':'')+'<span class="small" style="margin-left:auto">'+esc(fmtTs(l.timestamp))+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="log-footer"><span class="small mono">'+esc(l.logger_name||'')+(l.trace_id?' &bull; trace '+esc(l.trace_id):'')+'</span><button class="btn" style="font-size:11px;padding:3px 8px" data-copy-log="'+esc(l.id)+'" '+(state==='ready'||state==='error'?'':'disabled')+'>'+logCopyLabel(l.id)+'</button></div></div>';
+    return '<div class="log-item" data-log=\''+esc(JSON.stringify(l))+'\'><div class="log-header"><span class="level-badge level-'+esc(level)+'">'+esc(level)+'</span>'+(l.service_name?'<span class="svc-badge" title="'+esc(l.service_name)+'">'+esc(l.service_name)+'</span>':'')+'<span class="small" style="margin-left:auto">'+esc(fmtTs(l.timestamp))+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="log-footer"><span class="small mono">'+esc(l.logger_name||'')+(l.trace_id?' &bull; trace '+esc(l.trace_id):'')+'</span><button class="btn" style="font-size:11px;padding:3px 8px" data-copy-log="'+esc(l.id)+'" '+(state==='loading'?'disabled':'')+'>'+logCopyLabel(l.id)+'</button></div></div>';
   }).join(''):'<div class="empty-state">No logs found</div>';
   document.querySelectorAll('#'+target+' .log-item').forEach(function(el){el.onclick=function(){withLoading(function(){return openLog(JSON.parse(el.dataset.log));});};});
   document.querySelectorAll('#'+target+' [data-copy-log]').forEach(function(btn){
-    prepareLogCopyBackground(btn.dataset.copyLog);
     btn.onclick=async function(ev){ev.preventDefault();ev.stopPropagation();await copyLog(btn.dataset.copyLog,btn);};
   });
 }
@@ -1036,7 +1035,7 @@ function showManualCopy(text){
 function updateLogCopyButtons(logId){
   document.querySelectorAll('[data-copy-log="'+CSS.escape(logId)+'"]').forEach(function(btn){
     var state=logCopyState(logId);
-    btn.disabled=state!=='ready'&&state!=='error';
+    btn.disabled=state==='loading';
     btn.textContent=logCopyLabel(logId);
   });
 }
@@ -1056,14 +1055,16 @@ function prepareLogCopyBackground(logId){
 function prepareCopy(key,path,readyText){
   readyText=readyText||'Ready to copy';
   copyCache.set(key,{status:'loading',text:''});
-  api(path).then(function(data){
+  return api(path).then(function(data){
     copyCache.set(key,{status:'ready',text:data.text});
     preparedTextarea().value=data.text;
     showCopyStatus(readyText,false);
+    return data.text;
   }).catch(function(err){
     console.error(err);
     copyCache.set(key,{status:'error',text:''});
     showCopyStatus('Failed to prepare copy context',true);
+    throw err;
   });
 }
 function copyPrepared(key,successMessage,btn,resetText){
@@ -1084,12 +1085,21 @@ function copyPrepared(key,successMessage,btn,resetText){
 async function copyLog(logId,btn){
   var key='log:'+logId;
   var existing=copyCache.get(key);
-  if(!existing||existing.status==='loading'){prepareLogCopyBackground(logId);setCopyButton(btn,'Preparing...',true);showCopyStatus('Still preparing log context. The button will enable automatically.',true);return;}
+  if(!existing){prepareLogCopyBackground(logId);setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing log context. The button will enable automatically.',true);return;}
+  if(existing.status==='loading'){setCopyButton(btn,'Preparing...',true);showCopyStatus('Still preparing log context. The button will enable automatically.',true);return;}
   if(existing.status==='error'){copyCache.delete(key);prepareLogCopyBackground(logId);setCopyButton(btn,'Preparing...',true);showCopyStatus('Retrying log context preparation...',true);return;}
   copyPrepared(key,'✓ Copied log context for AI agent',btn,'Copy for AI');
 }
-function copyTrace(traceId,btn){copyPrepared('trace:'+traceId,'✓ Copied full trace context for AI agent',btn,'Copy full trace for AI');}
-function copyDependency(depId,btn){copyPrepared('dep:'+depId,'✓ Copied dependency errors/context for AI agent',btn,'Copy dependency errors for AI');}
+function copyTrace(traceId,btn){
+  var key='trace:'+traceId;
+  if(!copyCache.has(key)){prepareCopy(key,'/api/traces/'+encodeURIComponent(traceId)+'/agent-context','Ready to copy trace context');setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing trace context. Click again when ready.',true);return;}
+  copyPrepared(key,'✓ Copied full trace context for AI agent',btn,'Copy full trace for AI');
+}
+function copyDependency(depId,btn){
+  var key='dep:'+depId;
+  if(!copyCache.has(key)){prepareCopy(key,'/api/dependencies/'+encodeURIComponent(depId)+'/agent-context','Ready to copy dependency context');setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing dependency context. Click again when ready.',true);return;}
+  copyPrepared(key,'✓ Copied dependency errors/context for AI agent',btn,'Copy dependency errors for AI');
+}
 
 // ── OPEN DEPENDENCY ──
 async function openDependency(dep){
@@ -1103,9 +1113,8 @@ async function openDependency(dep){
   }).join('');
   $('drawerTitle').textContent='Dependency context';
   $('drawerSub').textContent=(dep.service_name||'')+' &bull; '+(dep.call_count||0)+' calls &bull; '+(dep.error_count||0)+' errors';
-  $('drawerBody').innerHTML='<div class="explain">This is an aggregate dependency. The error samples below are the actual failed events that produced the error count.</div><div class="tabs-row"><button class="btn btn-primary" data-copy-dep="'+esc(dep.id)+'">Copy dependency errors for AI</button><span id="copyStatus" class="small copy-ok" style="min-width:200px">Preparing copy context...</span>'+(sample.trace_id?'<button class="btn" data-open-trace="'+esc(sample.trace_id)+'">Open latest sample trace</button>':'')+'</div><h3 style="margin:14px 0 8px">Error samples</h3><div>'+(errorRows||'<div class="empty-state">No individual error payloads retained for this dependency yet.</div>')+'</div><h3 style="margin:14px 0 8px">Related logs</h3><div>'+(related||'<div class="empty-state">No nearby logs found.</div>')+'</div><h3 style="margin:14px 0 8px">Aggregate + latest sample</h3><pre>'+esc(pretty(data))+'</pre>';
+  $('drawerBody').innerHTML='<div class="explain">This is an aggregate dependency. The error samples below are the actual failed events that produced the error count.</div><div class="tabs-row"><button class="btn btn-primary" data-copy-dep="'+esc(dep.id)+'">Copy dependency errors for AI</button><span id="copyStatus" class="small copy-ok" style="min-width:200px">Copy context is prepared only when requested.</span>'+(sample.trace_id?'<button class="btn" data-open-trace="'+esc(sample.trace_id)+'">Open latest sample trace</button>':'')+'</div><h3 style="margin:14px 0 8px">Error samples</h3><div>'+(errorRows||'<div class="empty-state">No individual error payloads retained for this dependency yet.</div>')+'</div><h3 style="margin:14px 0 8px">Related logs</h3><div>'+(related||'<div class="empty-state">No nearby logs found.</div>')+'</div><h3 style="margin:14px 0 8px">Aggregate + latest sample</h3><pre>'+esc(pretty(data))+'</pre>';
   openDrawer();
-  prepareCopy('dep:'+dep.id,'/api/dependencies/'+encodeURIComponent(dep.id)+'/agent-context','Ready to copy dependency context');
 }
 
 // ── OPEN LOG ──
@@ -1113,9 +1122,8 @@ async function openLog(log){
   if(log.trace_id){await openTraceMap(log.trace_id);return;}
   $('drawerTitle').textContent='Log record';
   $('drawerSub').textContent=(log.service_name||'')+' &bull; '+fmtTs(log.timestamp);
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-log="'+esc(log.id)+'">Copy log context for AI</button><span id="copyStatus" class="small copy-ok">Preparing copy context...</span></div><div class="explain">This log has no trace id, so only the record and nearby logs are available.</div><pre>'+esc(pretty(log))+'</pre>';
+  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-log="'+esc(log.id)+'">Copy log context for AI</button><span id="copyStatus" class="small copy-ok">Copy context is prepared only when requested.</span></div><div class="explain">This log has no trace id, so only the record and nearby logs are available.</div><pre>'+esc(pretty(log))+'</pre>';
   openDrawer();
-  prepareCopy('log:'+log.id,'/api/logs/'+encodeURIComponent(log.id)+'/agent-context','Ready to copy log context');
 }
 
 // ── TRACE MAP ──
@@ -1160,11 +1168,29 @@ async function openTraceMap(traceId){
   selectedTraceId=traceId;
   renderTraceList();
   copyCache.delete('trace:'+traceId);
-  var data=await api('/api/traces/'+encodeURIComponent(traceId)+'/map');
+  $('drawerTitle').textContent='Triggered map';
+  $('drawerSub').textContent='trace '+traceId;
+  $('drawerBody').innerHTML='<div class="empty-state">Loading selected trace...</div>';
+  openDrawer();
+  var data;
+  try{
+    data=await api('/api/traces/'+encodeURIComponent(traceId)+'/map?slim=true');
+  }catch(err){
+    $('drawerBody').innerHTML='<div class="empty-state">Failed to load trace: '+esc(err.message||String(err))+'</div>';
+    throw err;
+  }
+  var traceRoute=data.traces&&data.traces[0]&&data.traces[0].route_id;
+  if(traceRoute&&(!routeState||!routeState.route||routeState.route.id!==traceRoute)){
+    selectedRouteId=traceRoute;
+    routeState=await api('/api/routes/'+encodeURIComponent(traceRoute)+'/requests?include_hidden=true');
+  }
+  selectedTraceId=traceId;
+  if(traceRoute)switchTab('requests');
+  renderTraceList();
   var flowLogs=data.flow_logs||data.logs||[];
   var backgroundLogs=data.nearby_background_logs||[];
   $('drawerTitle').textContent='Triggered map';
-  $('drawerSub').textContent='trace '+traceId+' &bull; '+flowLogs.length+' exact logs &bull; '+data.events.length+' events &bull; '+data.dependencies.length+' dependency calls &bull; '+backgroundLogs.length+' nearby background logs hidden';
+  $('drawerSub').textContent='trace '+traceId+' &bull; '+flowLogs.length+' exact logs &bull; '+(data.event_count||data.events.length)+' events &bull; '+data.dependencies.length+' dependency calls &bull; '+backgroundLogs.length+' nearby background logs hidden';
   var logsHtml=flowLogs.map(function(l){
     return '<div class="log-item"><div class="log-header"><span class="level-badge level-'+esc(l.level)+'">'+esc(l.level||'LOG')+'</span><span class="small">'+esc(l.service_name)+' &bull; '+esc(fmtTs(l.timestamp))+' &bull; exact trace</span></div><div class="log-body">'+esc(l.message)+'</div><div class="small mono">'+esc(l.logger_name||'')+(l.source_function?' &bull; '+esc(l.source_function):'')+'</div></div>';
   }).join('')||'<div class="empty-state">No logs directly correlated to this trace.</div>';
@@ -1174,14 +1200,13 @@ async function openTraceMap(traceId){
   var hasGrouped=!!(data.flow&&Array.isArray(data.flow.nodes)&&data.flow.nodes.length);
   var groupedMap=renderMap(Object.assign({},data,{logs:flowLogs}));
   var rawTimeline=renderRawTimeline(data.timeline||data.events);
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-trace="'+esc(traceId)+'">Copy full trace for AI</button><span id="copyStatus" class="small copy-ok">Preparing copy context...</span><span class="pill">'+data.traces.length+' route</span><span class="pill">'+data.spans.length+' spans</span><span class="pill">'+data.dependencies.length+' deps</span><span class="pill">'+flowLogs.length+' exact logs</span><span class="pill">'+data.exceptions.length+' errors</span></div><div class="explain">Only exact trace-id events are shown in the causal flow. Cron jobs, SQS pollers, and background tasks run independently with no trace id and are separated as nearby background activity.</div>'+renderTraceViewToggle(hasGrouped)+'<div id="groupedTraceView" class="trace-toggle-panel">'+groupedMap+'</div><div id="rawTraceView" class="trace-toggle-panel hidden-panel"><h3 style="margin:0 0 8px">Raw causal timeline</h3>'+rawTimeline+'</div><h3 style="margin:14px 0 8px">Dependency details + inputs</h3>'+renderDependencyDetails(data.dependencies||[])+'<h3 style="margin:14px 0 8px">Exact flow logs</h3><div>'+logsHtml+'</div>'+(hasGrouped?'':'<h3 style="margin:14px 0 8px">Raw causal timeline</h3>'+rawTimeline)+'<br><details style="margin-top:12px"><summary class="small" style="cursor:pointer;padding:4px 0">Nearby background activity ('+backgroundLogs.length+')</summary><div class="explain" style="margin-top:8px">These logs happened around the same time but have no matching trace_id.</div><div>'+(backgroundHtml||'<div class="empty-state">No nearby background logs.</div>')+'</div></details>';
+  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-trace="'+esc(traceId)+'">Copy full trace for AI</button><span id="copyStatus" class="small copy-ok">Copy context is prepared only when requested.</span><span class="pill">'+data.traces.length+' route</span><span class="pill">'+data.spans.length+' spans</span><span class="pill">'+data.dependencies.length+' deps</span><span class="pill">'+flowLogs.length+' exact logs</span><span class="pill">'+data.exceptions.length+' errors</span></div><div class="explain">Only exact trace-id events are shown in the causal flow. Cron jobs, SQS pollers, and background tasks run independently with no trace id and are separated as nearby background activity.</div>'+renderTraceViewToggle(hasGrouped)+'<div id="groupedTraceView" class="trace-toggle-panel">'+groupedMap+'</div><div id="rawTraceView" class="trace-toggle-panel hidden-panel"><h3 style="margin:0 0 8px">Raw causal timeline</h3>'+rawTimeline+'</div><h3 style="margin:14px 0 8px">Dependency details + inputs</h3>'+renderDependencyDetails(data.dependencies||[])+'<h3 style="margin:14px 0 8px">Exact flow logs</h3><div>'+logsHtml+'</div>'+(hasGrouped?'':'<h3 style="margin:14px 0 8px">Raw causal timeline</h3>'+rawTimeline)+'<br><details style="margin-top:12px"><summary class="small" style="cursor:pointer;padding:4px 0">Nearby background activity ('+backgroundLogs.length+')</summary><div class="explain" style="margin-top:8px">These logs happened around the same time but have no matching trace_id.</div><div>'+(backgroundHtml||'<div class="empty-state">No nearby background logs.</div>')+'</div></details>';
   openDrawer();
-  prepareCopy('trace:'+traceId,'/api/traces/'+encodeURIComponent(traceId)+'/agent-context','Ready to copy trace context');
 }
 
 // ── OPEN ERROR ──
 async function openError(appId,id){
-  var data=await api('/api/apps/'+encodeURIComponent(appId)+'/exceptions/'+encodeURIComponent(id));
+  var data=await api('/api/apps/'+encodeURIComponent(appId)+'/exceptions/'+encodeURIComponent(id)+'?include_context=false');
   if(data.exception&&data.exception.sample_trace_id){await openTraceMap(data.exception.sample_trace_id);return;}
   $('drawerTitle').textContent='Error';
   $('drawerSub').textContent=(data.exception&&data.exception.last_seen)||'';

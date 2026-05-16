@@ -282,7 +282,9 @@ def enrich_dependencies(conn, dependencies: list[dict[str, Any]]) -> list[dict[s
     samples = rows_to_dicts(
         conn.execute(
             """
-            SELECT events.*, apps.service_name
+            SELECT events.id, events.app_id, events.trace_id, events.span_id,
+              events.parent_span_id, events.kind, events.timestamp,
+              events.payload_json, apps.service_name
             FROM events JOIN apps ON apps.id = events.app_id
             WHERE events.kind IN ('db_query','http_client_call','llm_call')
             ORDER BY events.timestamp DESC LIMIT 1000
@@ -323,6 +325,52 @@ def _duration_from_payload(payload: dict[str, Any]) -> float | None:
         except (TypeError, ValueError):
             return None
     return None
+
+
+def _short(value: Any, limit: int = 500) -> Any:
+    if isinstance(value, str) and len(value) > limit:
+        return value[:limit] + "…"
+    if isinstance(value, list):
+        return [_short(item, limit) for item in value[:20]]
+    if isinstance(value, dict):
+        return {str(key): _short(item, limit) for key, item in list(value.items())[:40]}
+    return value
+
+
+def _compact_payload(kind: str, payload_json: str | None) -> dict[str, Any]:
+    try:
+        payload = json.loads(payload_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        return {}
+    keep_by_kind = {
+        "db_query": {"operation", "statement_fingerprint", "statement_template", "tables", "target", "database", "table", "duration_ms", "row_count", "parameters", "route_id", "route_pattern", "error_type", "error_message", "source_file", "source_function", "source_line", "model", "relationship", "loader_strategy"},
+        "http_client_call": {"method", "host", "url", "target", "status_code", "duration_ms", "error_type", "error_message"},
+        "llm_call": {"provider", "model", "streaming", "duration_ms", "input_tokens", "output_tokens", "total_tokens", "tool_call_names", "error_type", "error_message"},
+        "log_record": {"level", "logger_name", "message", "source_file", "source_function", "source_line"},
+        "exception_raised": {"type", "message", "fingerprint", "method", "route_pattern", "route_id", "status_code"},
+        "request_started": {"method", "path", "route_pattern", "route_id", "correlation_id"},
+        "request_finished": {"method", "path", "route_pattern", "route_id", "status_code", "duration_ms", "request_bytes", "response_bytes", "correlation_id"},
+        "span_started": {"name", "kind", "attributes"},
+        "span_finished": {"name", "kind", "duration_ms", "status", "route_id", "error_type"},
+        "route_discovered": {"method", "route_pattern", "route_id"},
+    }
+    keep = keep_by_kind.get(kind, set(payload.keys()))
+    return {key: _short(payload[key]) for key in keep if key in payload and payload[key] is not None}
+
+
+def _compact_trace_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compacted = []
+    for row in rows:
+        item = {key: value for key, value in row.items() if key != "raw_json"}
+        payload = _compact_payload(str(item.get("kind") or ""), item.get("payload_json"))
+        item["payload_json"] = json.dumps(payload, separators=(",", ":"))
+        for key in ("message", "name", "target", "operation"):
+            if key in payload and key not in item:
+                item[key] = payload[key]
+        compacted.append(item)
+    return compacted
 
 
 def _dependency_signature(event: dict[str, Any]) -> dict[str, Any]:
@@ -809,7 +857,6 @@ def create_router() -> APIRouter:
                     [*visible_params, *dep_params],
                 ).fetchall()
             )
-            dependencies = enrich_dependencies(conn, dependencies)
             db_path = getattr(db, "path", None)
             storage = db_path.stat().st_size if db_path and db_path.exists() else 0
             retention_values = read_retention_settings(conn, settings)
@@ -873,11 +920,13 @@ def create_router() -> APIRouter:
             return rows_to_dicts(conn.execute("SELECT * FROM exceptions WHERE app_id=? ORDER BY last_seen DESC", (app_id,)).fetchall())
 
     @router.get("/api/apps/{app_id}/exceptions/{exception_id}")
-    def exception_detail(app_id: str, exception_id: str, db: Database = Depends(get_db)) -> dict[str, Any]:
+    def exception_detail(app_id: str, exception_id: str, include_context: bool = True, db: Database = Depends(get_db)) -> dict[str, Any]:
         with db.connect() as conn:
             exception = row_to_dict(conn.execute("SELECT * FROM exceptions WHERE app_id=? AND id=?", (app_id, exception_id)).fetchone())
             if not exception:
                 raise HTTPException(status_code=404, detail="exception not found")
+            if not include_context:
+                return {"exception": exception}
             same_trace_logs = rows_to_dicts(conn.execute("SELECT logs.*, apps.service_name FROM logs JOIN apps ON apps.id=logs.app_id WHERE trace_id=? ORDER BY timestamp", (exception.get("sample_trace_id"),)).fetchall()) if exception.get("sample_trace_id") else []
             nearby = logs_around(conn, exception.get("last_seen"), trace_id=exception.get("sample_trace_id"), window_seconds=180)
             trace = trace_detail(app_id, exception["sample_trace_id"], db) if exception.get("sample_trace_id") else None
@@ -1031,7 +1080,7 @@ def create_router() -> APIRouter:
             return {"route": route, "traces": traces, "logs": logs}
 
     def build_trace_agent_context(trace_id: str, db: Database) -> str:
-        data = trace_map(trace_id, db)
+        data = trace_map(trace_id, db=db)
         lines = ["# Runtime Observer Trace Context", "", f"Trace ID: `{trace_id}`", ""]
         for trace in data.get("traces", []):
             lines.extend(["## Request", f"- App: {trace.get('service_name')}", f"- Route: {trace.get('method')} {trace.get('route_pattern')}", f"- Status: {trace.get('status_code')}", f"- Duration ms: {trace.get('duration_ms')}", ""])
@@ -1200,7 +1249,7 @@ def create_router() -> APIRouter:
         return {"nodes": nodes, "edges": edges}
 
     @router.get("/api/traces/{trace_id}/map")
-    def trace_map(trace_id: str, db: Database = Depends(get_db)) -> dict[str, Any]:
+    def trace_map(trace_id: str, slim: bool = False, db: Database = Depends(get_db)) -> dict[str, Any]:
         with db.connect() as conn:
             traces = rows_to_dicts(
                 conn.execute(
@@ -1215,7 +1264,18 @@ def create_router() -> APIRouter:
                     (trace_id,),
                 ).fetchall()
             )
-            events = rows_to_dicts(conn.execute("SELECT events.*, apps.service_name FROM events JOIN apps ON apps.id=events.app_id WHERE events.trace_id=? ORDER BY events.timestamp", (trace_id,)).fetchall())
+            events = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT events.id, events.app_id, events.trace_id, events.span_id,
+                      events.parent_span_id, events.kind, events.timestamp,
+                      events.payload_json, apps.service_name
+                    FROM events JOIN apps ON apps.id=events.app_id
+                    WHERE events.trace_id=? ORDER BY events.timestamp
+                    """,
+                    (trace_id,),
+                ).fetchall()
+            )
             spans = rows_to_dicts(conn.execute("SELECT spans.*, apps.service_name FROM spans JOIN apps ON apps.id=spans.app_id WHERE spans.trace_id=? ORDER BY spans.started_at", (trace_id,)).fetchall())
             logs = rows_to_dicts(conn.execute("SELECT logs.*, apps.service_name FROM logs JOIN apps ON apps.id=logs.app_id WHERE logs.trace_id=? ORDER BY logs.timestamp", (trace_id,)).fetchall())
             exceptions = rows_to_dicts(conn.execute("SELECT exceptions.*, apps.service_name FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE exceptions.sample_trace_id=? ORDER BY exceptions.last_seen DESC", (trace_id,)).fetchall())
@@ -1231,7 +1291,18 @@ def create_router() -> APIRouter:
             relationship_loader_groups = build_relationship_loader_groups(dependencies)
             slow_gap_markers = build_slow_gap_markers(timeline, traces)
             duplicate_candidates = build_duplicate_candidates(dependencies)
-            return {"trace_id": trace_id, "traces": traces, "events": events, "spans": spans, "logs": logs, "flow_logs": flow_logs, "nearby_background_logs": nearby_background_logs, "exceptions": exceptions, "dependencies": dependencies, "timeline": timeline, "nearby_logs_all_apps": nearby_logs, "flow": flow, "dependency_groups": dependency_groups, "relationship_loader_groups": relationship_loader_groups, "slow_gap_markers": slow_gap_markers, "duplicate_candidates": duplicate_candidates}
+            compact_events = _compact_trace_rows(events)
+            compact_dependencies = [event for event in compact_events if event.get("kind") in {"http_client_call", "db_query", "llm_call"}]
+            compact_timeline = _compact_trace_rows(timeline)
+            event_count = len(compact_events)
+            if slim:
+                compact_events = []
+                compact_timeline = []
+                nearby_background_logs = nearby_background_logs[:50]
+                logs = []
+                nearby_logs = []
+                flow = {"nodes": [{"id": trace_id}], "edges": []}
+            return {"trace_id": trace_id, "traces": traces, "event_count": event_count, "events": compact_events, "spans": spans, "logs": logs, "flow_logs": flow_logs, "nearby_background_logs": nearby_background_logs, "exceptions": exceptions, "dependencies": compact_dependencies, "timeline": compact_timeline, "nearby_logs_all_apps": nearby_logs, "flow": flow, "dependency_groups": dependency_groups, "relationship_loader_groups": relationship_loader_groups, "slow_gap_markers": slow_gap_markers, "duplicate_candidates": duplicate_candidates}
 
     @router.get("/api/traces/{trace_id}/correlated-logs")
     def correlated_trace_logs(trace_id: str, level: str | None = None, app_ids: str | None = None, same_project: bool = True, window_seconds: int = Query(180, ge=1, le=3600), limit: int = Query(500, ge=1, le=2000), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
