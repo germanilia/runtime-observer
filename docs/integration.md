@@ -4,7 +4,7 @@ This guide covers installing Runtime Observer from GitHub, running the collector
 
 ## Package availability
 
-Runtime Observer is not published to PyPI or npm yet. Install the Python SDK and collector directly from this repository using GitHub `subdirectory` URLs. Browser and Node.js projects install the lightweight npm helper from the repository root. The npm package name is `runtime-observer-browser`, but the GitHub install target is the repository root.
+Runtime Observer is not published to PyPI or npm yet. Install the Python SDK and collector directly from this repository using GitHub `subdirectory` URLs. Browser and Node.js projects install the JavaScript SDK from the repository root. The npm package name is `runtime-observer`, with separate `runtime-observer/browser` and `runtime-observer/node` entrypoints.
 
 ## Install from GitHub
 
@@ -231,7 +231,7 @@ Supported event kinds are `app_started`, `dependency_inventory`, `route_discover
 Install the JavaScript helper directly from GitHub:
 
 ```bash
-npm install runtime-observer-browser@github:germanilia/runtime-observer
+npm install runtime-observer@github:germanilia/runtime-observer
 ```
 
 Or add it explicitly to `package.json`:
@@ -239,7 +239,7 @@ Or add it explicitly to `package.json`:
 ```json
 {
   "dependencies": {
-    "runtime-observer-browser": "github:germanilia/runtime-observer"
+    "runtime-observer": "github:germanilia/runtime-observer"
   }
 }
 ```
@@ -251,51 +251,50 @@ Then run `npm install`.
 Configure it once during application startup:
 
 ```js
-import {
-  configureRuntimeObserver,
-  emitRuntimeObserverEvent,
-  installRuntimeObserverBrowserHooks,
-} from 'runtime-observer-browser';
+import { initBrowserObserver } from 'runtime-observer/browser';
 
-configureRuntimeObserver({
+const observer = initBrowserObserver({
   endpoint: 'http://127.0.0.1:4319',
   apiKey: 'ro_xxxxxxxx_project_key_from_dashboard',
   projectName: 'checkout',
   serviceName: 'frontend',
 });
-installRuntimeObserverBrowserHooks();
 
-await emitRuntimeObserverEvent('app_started', {
+observer.installBrowserHooks();
+observer.instrumentFetch();
+observer.captureNavigation();
+
+observer.emit('app_started', {
   environment: import.meta.env.MODE,
   location: window.location.origin,
 });
 
-await emitRuntimeObserverEvent('log_record', {
+observer.emit('log_record', {
   level: 'INFO',
   logger_name: 'browser.app',
   message: 'frontend started',
 });
 ```
 
-`installRuntimeObserverBrowserHooks()` currently captures browser `error` and `unhandledrejection` events. Use `emitRuntimeObserverEvent()` for page-load, user action, feature, and performance milestones you want to see even when no error occurs.
+`observer.installBrowserHooks()` captures browser `error`, `unhandledrejection`, and page-hide flushes. `observer.instrumentFetch()` records browser `fetch` calls. Use `observer.emit()` for page-load, user action, feature, and performance milestones you want to see even when no error occurs.
 
 Useful browser enrichment examples:
 
 ```js
-await emitRuntimeObserverEvent('log_record', {
+observer.emit('log_record', {
   level: 'INFO',
   logger_name: 'browser.navigation',
   message: 'route changed',
   route: window.location.pathname,
 });
 
-await emitRuntimeObserverEvent('metric_counter', {
+observer.emit('metric_counter', {
   name: 'ui.button.clicked',
   value: 1,
   attributes: { button: 'checkout-submit', route: window.location.pathname },
 });
 
-await emitRuntimeObserverEvent('log_record', {
+observer.emit('log_record', {
   level: 'WARNING',
   logger_name: 'browser.validation',
   message: 'checkout form validation failed',
@@ -307,62 +306,46 @@ A browser can also post schema-compatible events directly to the browser endpoin
 
 ### Node.js services
 
-For Node.js services on Node 18+, the same package can emit manual events because it uses the built-in `fetch` API:
+For Node.js services on Node 18+, use the Node entrypoint. It resolves `RUNTIME_OBSERVER_*` environment variables, batches events, preserves async trace context with `AsyncLocalStorage`, emits startup/dependency events, and can instrument global `fetch` and Express middleware:
 
 ```js
-import { configureRuntimeObserver, emitRuntimeObserverEvent } from 'runtime-observer-browser';
+import express from 'express';
+import { initRuntimeObserver } from 'runtime-observer/node';
 
-configureRuntimeObserver({
-  endpoint: process.env.RUNTIME_OBSERVER_ENDPOINT,
-  apiKey: process.env.RUNTIME_OBSERVER_API_KEY,
-  projectName: process.env.RUNTIME_OBSERVER_PROJECT_NAME,
-  serviceName: process.env.RUNTIME_OBSERVER_SERVICE_NAME || 'node-service',
-});
+const observer = initRuntimeObserver.fromEnv({ serviceName: 'node-service' });
+observer.instrumentFetch();
 
-await emitRuntimeObserverEvent('app_started', {
-  environment: process.env.NODE_ENV || 'development',
-  pid: process.pid,
-});
+const app = express();
+observer.instrumentExpress(app);
 
-await emitRuntimeObserverEvent('log_record', {
+observer.emit('log_record', {
   level: 'INFO',
   logger_name: 'node.bootstrap',
   message: 'node service started',
 });
+
+app.get('/sync', async (_req, res) => {
+  await observer.startSpan('syncCatalog', async () => {
+    await syncCatalog();
+  }, { kind: 'function', attributes: { source: 'shopify' } });
+  res.json({ ok: true });
+});
+
+process.on('beforeExit', () => observer.shutdown());
 ```
 
-Wrap important Node functions with paired span events if you want them to appear as timed work in the trace/event stream:
+For non-Express workers, use the same observer manually:
 
 ```js
-const spanId = crypto.randomUUID();
-const started = performance.now();
-await emitRuntimeObserverEvent('span_started', {
-  name: 'syncCatalog',
-  kind: 'function',
-  attributes: { source: 'shopify' },
-}, { spanId });
+const observer = initRuntimeObserver.fromEnv({ serviceName: 'worker' });
 
 try {
-  await syncCatalog();
-  await emitRuntimeObserverEvent('span_finished', {
-    name: 'syncCatalog',
-    kind: 'function',
-    status: 'ok',
-    duration_ms: performance.now() - started,
-  }, { spanId });
+  await observer.startSpan('nightly_rollup', () => doWork(), { kind: 'job' });
 } catch (error) {
-  await emitRuntimeObserverEvent('exception_raised', {
-    type: error.name || 'Error',
-    message: error.message,
-    stack: String(error.stack || ''),
-  }, { spanId });
-  await emitRuntimeObserverEvent('span_finished', {
-    name: 'syncCatalog',
-    kind: 'function',
-    status: 'error',
-    duration_ms: performance.now() - started,
-  }, { spanId });
+  observer.captureException(error, { job: 'nightly_rollup' });
   throw error;
+} finally {
+  await observer.shutdown();
 }
 ```
 
@@ -372,13 +355,13 @@ Because the browser endpoint accepts the API key in the URL, only use browser in
 
 | What to add | SDK API | Dashboard effect |
 | --- | --- | --- |
-| Frontend/server startup | `emitRuntimeObserverEvent('app_started', {...})` | Creates the app/service and shows recent activity |
-| Browser runtime errors | `installRuntimeObserverBrowserHooks()` | Error logs for `window.error` and unhandled promises |
-| User actions | `emitRuntimeObserverEvent('log_record', {...})` | Searchable frontend activity and context |
-| Business counters | `emitRuntimeObserverEvent('metric_counter', {...})` | Raw metric events and future metric aggregation |
-| Timed function work | `span_started` + `span_finished` events | Function timing in event/trace context |
-| Handled errors | `exception_raised` event | Error records even if the UI/server recovers |
-| Cross-service correlation | pass `{ traceId, spanId, parentSpanId }` as the third argument | Groups related browser, Node, and backend events by trace |
+| Frontend/server startup | `observer.emit('app_started', {...})` | Creates the app/service and shows recent activity |
+| Browser runtime errors | `observer.installBrowserHooks()` | Error logs for `window.error` and unhandled promises |
+| User actions | `observer.emit('log_record', {...})` | Searchable frontend activity and context |
+| Business counters | `observer.emit('metric_counter', {...})` | Raw metric events and future metric aggregation |
+| Timed function work | `observer.startSpan(name, fn, options)` | Function timing in event/trace context |
+| Handled errors | `observer.captureException(error, extra)` | Error records even if the UI/server recovers |
+| Cross-service correlation | pass `{ traceId, spanId, parentSpanId }` as the third argument or use Node async context | Groups related browser, Node, and backend events by trace |
 
 ## Dashboard behavior
 

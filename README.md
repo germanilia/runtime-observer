@@ -29,13 +29,13 @@ python -m pip install \
   'runtime-observer-server @ git+https://github.com/germanilia/runtime-observer.git#subdirectory=collector'
 ```
 
-The same URLs work with `uv pip install`. For browser or Node.js apps, install the lightweight helper directly from GitHub:
+The same URLs work with `uv pip install`. For browser or Node.js apps, install the JavaScript SDK directly from GitHub:
 
 ```bash
-npm install runtime-observer-browser@github:germanilia/runtime-observer
+npm install runtime-observer@github:germanilia/runtime-observer
 ```
 
-Or add `"runtime-observer-browser": "github:germanilia/runtime-observer"` to `package.json` and run `npm install`.
+Use `runtime-observer/browser` in frontend bundles and `runtime-observer/node` in backend services. For older installs, replace `runtime-observer-browser` with `runtime-observer` in `package.json` and run `npm install`.
 
 See [`docs/integration.md`](docs/integration.md) for full setup and examples.
 
