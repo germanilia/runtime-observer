@@ -1,0 +1,46 @@
+# Docker Compose for the homeserver deployment of Runtime Observer.
+# Single FastAPI collector that serves the dashboard and the API on port 4319.
+# SQLite persistence on a named docker volume.
+# Reached by Nginx Proxy Manager (NPM) over the external `system_default`
+# network, mapped to the public domain `metrics.homeserver`.
+#
+# Usage:
+#   just deploy-homeserver
+#   # or on the homeserver directly:
+#   docker compose -f docker-compose.homeserver.yml up -d
+
+services:
+  collector:
+    image: ro-collector:latest
+    container_name: ro-collector
+    restart: unless-stopped
+    env_file:
+      - ./deployments/homeserver/env.homeserver
+    environment:
+      RUNTIME_OBSERVER_HOST: 0.0.0.0
+      RUNTIME_OBSERVER_PORT: "4319"
+      RUNTIME_OBSERVER_DATABASE_URL: "sqlite:////data/runtime_observer.sqlite3"
+      RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND: "direct"
+      RUNTIME_OBSERVER_INSECURE_DEV: "false"
+    volumes:
+      - collector_data:/data
+    # No host port mapping — NPM reaches ro-collector:4319 via system_default.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:4319/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - ro-network
+      - system_default
+
+networks:
+  ro-network:
+    driver: bridge
+  system_default:
+    external: true
+
+volumes:
+  collector_data:
+    driver: local

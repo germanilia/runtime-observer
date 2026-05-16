@@ -274,10 +274,20 @@ Supported event kinds are `app_started`, `dependency_inventory`, `route_discover
 
 ## Browser and Node.js SDK
 
-Install the JavaScript helper directly from GitHub:
+The JavaScript SDK lives in this repository under `js-sdk/` and is exported by the repository-root `package.json`. It is not currently published to npm. Prefer the host project's normal frontend setup command and add Runtime Observer in the form that matches how that project consumes unpublished packages.
+
+For local development against a checked-out Runtime Observer repository, install from the repository root. npm will read the root `package.json` and expose the `js-sdk/` entrypoints:
 
 ```bash
-npm install runtime-observer@github:germanilia/runtime-observer
+npm install /absolute/path/to/runtime-observer
+npm install runtime-observer@file:/absolute/path/to/runtime-observer
+```
+
+You can also build a tarball from the Runtime Observer repository root and install that file in the target app:
+
+```bash
+just pack-js-sdk
+npm install /absolute/path/to/runtime-observer/runtime-observer-0.2.0.tgz
 ```
 
 Or add it explicitly to `package.json`:
@@ -285,12 +295,18 @@ Or add it explicitly to `package.json`:
 ```json
 {
   "dependencies": {
-    "runtime-observer": "github:germanilia/runtime-observer"
+    "runtime-observer": "file:/absolute/path/to/runtime-observer"
   }
 }
 ```
 
-Then run `npm install`.
+For GitHub installs, use:
+
+```bash
+npm install runtime-observer@github:germanilia/runtime-observer
+```
+
+If npm reports `Could not read package.json ... git-clone.../package.json`, verify that GitHub still reports `main` as the repository default branch. npm Git dependencies do not support pip-style `#subdirectory=...` fragments, so use a local file dependency or a published JS package instead of trying a subdirectory install.
 
 ### Browser setup
 

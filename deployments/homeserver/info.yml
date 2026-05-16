@@ -1,0 +1,7 @@
+ssh_alias: homeserver
+domain: metrics.homeserver
+remote_dir: ~/runtime-observer
+container_name: ro-collector
+forward_hostname: ro-collector
+forward_port: 4319
+external_network: system_default

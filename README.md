@@ -29,13 +29,23 @@ python -m pip install \
   'runtime-observer-server @ git+https://github.com/germanilia/runtime-observer.git#subdirectory=collector'
 ```
 
-The same URLs work with `uv pip install`. For browser or Node.js apps, install the JavaScript SDK directly from GitHub:
+The same URLs work with `uv pip install`. For browser or Node.js apps, the JavaScript SDK lives under `js-sdk/` and is exported by the repository-root `package.json`. Until it is published to npm, install it from GitHub or from a checked-out repository path:
 
 ```bash
 npm install runtime-observer@github:germanilia/runtime-observer
+npm install /absolute/path/to/runtime-observer
+npm install runtime-observer@file:/absolute/path/to/runtime-observer
 ```
 
-Use `runtime-observer/browser` in frontend bundles and `runtime-observer/node` in backend services. For older installs, replace `runtime-observer-browser` with `runtime-observer` in `package.json` and run `npm install`.
+You can also create a portable local tarball from the repository root:
+
+```bash
+just pack-js-sdk
+# then, in the target app:
+npm install /absolute/path/to/runtime-observer/runtime-observer-0.2.0.tgz
+```
+
+Use `runtime-observer/browser` in frontend bundles and `runtime-observer/node` in backend services. For older installs, replace `runtime-observer-browser` with `runtime-observer` in `package.json` and run your project's normal frontend install workflow.
 
 See [`docs/integration.md`](docs/integration.md) for full setup and examples.
 

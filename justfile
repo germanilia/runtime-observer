@@ -102,6 +102,15 @@ test-collector PREFERRED_PORT="4319":
 test-schemas:
     cd schemas && python3 -m unittest discover -s tests -q
 
+# JavaScript SDK tests
+test-js-sdk:
+    npm test
+
+# Build a local JavaScript SDK tarball for installing into another project.
+# Example in the target app: npm install /path/to/runtime-observer/runtime-observer-0.2.0.tgz
+pack-js-sdk:
+    npm pack
+
 # Compile importable Python packages
 compile:
     cd python-sdk && uv run python -m compileall runtime_observer
@@ -114,6 +123,14 @@ lint:
 # Deploy Runtime Observer to EC2 behind an ALB. Example: just deploy-ec2 sela
 deploy-ec2 ENVIRONMENT="sela":
     ./scripts/deploy_ec2.sh {{ ENVIRONMENT }}
+
+# Deploy Runtime Observer to the homeserver via the `homeserver` SSH alias.
+# NPM forwards https://metrics.homeserver to ro-collector:4319.
+# Example:
+#   just deploy-homeserver
+#   just deploy-homeserver --clean-volume   # wipe the SQLite volume first
+deploy-homeserver *args:
+    @bash scripts/deploy-homeserver.sh {{ args }}
 
 # Run the minimal FastAPI example after starting the collector.
 # Uses the requested port if available, otherwise the next free port.

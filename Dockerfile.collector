@@ -1,0 +1,37 @@
+# Self-contained Runtime Observer collector image.
+# Built locally and shipped to the homeserver via `docker save | scp | docker load`.
+# Serves both the dashboard HTML and the ingest/agent API on a single port.
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    RUNTIME_OBSERVER_HOST=0.0.0.0 \
+    RUNTIME_OBSERVER_PORT=4319
+
+# curl is only needed for the container HEALTHCHECK.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/collector
+
+# Copy the collector package and install it. This brings in fastapi,
+# uvicorn, psycopg, and boto3 as declared in collector/pyproject.toml,
+# and exposes the runtime-observer-server entrypoint on PATH.
+COPY collector/pyproject.toml /app/collector/pyproject.toml
+COPY collector/runtime_observer_server /app/collector/runtime_observer_server
+RUN pip install .
+
+# Persistent SQLite lives here. docker-compose mounts a named volume.
+RUN mkdir -p /data
+VOLUME ["/data"]
+
+EXPOSE 4319
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl -fsS "http://127.0.0.1:${RUNTIME_OBSERVER_PORT}/" >/dev/null || exit 1
+
+CMD ["runtime-observer-server", "--host", "0.0.0.0", "--port", "4319"]
