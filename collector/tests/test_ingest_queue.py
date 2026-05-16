@@ -144,7 +144,8 @@ def test_ingest_endpoint_can_use_memory_queue(tmp_path):
         insecure_dev_mode=True,
     )
     with TestClient(create_app(settings)) as client:
-        response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": [sample_event("via-api")]})
+        project_key = client.post("/api/projects/queue/api-keys").json()["api_key"]
+        response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": [sample_event("via-api")]})
         assert response.status_code == 200
         assert response.json()["queued"] is True
         deadline = time.time() + 2

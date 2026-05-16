@@ -146,6 +146,24 @@ def iso_at(delta: timedelta) -> str:
     return (datetime.now(UTC) + delta).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def test_project_group_can_be_set_when_creating_key_and_updated(tmp_path):
+    client = make_client(tmp_path)
+    login(client)
+
+    response = client.post("/api/projects/shop/api-keys", json={"group_name": "production"})
+    assert response.status_code == 200
+    assert response.json()["group_name"] == "production"
+    projects = client.get("/api/projects").json()
+    assert projects[0]["project_name"] == "shop"
+    assert projects[0]["group_name"] == "production"
+
+    update = client.put("/api/projects/shop/settings", json={"group_name": "work"})
+    assert update.status_code == 200
+    assert update.json()["group_name"] == "work"
+    projects = client.get("/api/projects").json()
+    assert projects[0]["group_name"] == "work"
+
+
 def test_settings_api_validates_and_persists_retention(tmp_path):
     client = make_client(tmp_path)
     login(client)
@@ -247,6 +265,15 @@ def test_ingest_rejects_missing_invalid_and_admin_keys(tmp_path):
 
     # And none of those rejected requests created a project entry in the dashboard.
     login(client)
+    assert client.get("/api/projects").json() == []
+    assert client.get("/api/apps").json() == []
+
+
+def test_insecure_dev_still_requires_project_key_for_ingest(tmp_path):
+    client = make_insecure_client(tmp_path)
+
+    assert client.post("/v1/ingest", json={"events": sample_events()}).status_code == 401
+    assert client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": sample_events()}).status_code == 401
     assert client.get("/api/projects").json() == []
     assert client.get("/api/apps").json() == []
 
@@ -458,7 +485,9 @@ def test_session_login_logout_and_first_admin_bootstrap(tmp_path):
 
 def test_hidden_route_preferences_are_per_user(tmp_path):
     client = make_insecure_client(tmp_path)
-    client.post("/v1/ingest", json={"events": sample_events()})
+    project_key = client.post("/api/projects/internal-assistant/api-keys").json()["api_key"]
+    response = client.post("/v1/ingest", headers={"Authorization": f"Bearer {project_key}"}, json={"events": sample_events()})
+    assert response.status_code == 200
 
     alice = {"X-Runtime-Observer-User": "alice"}
     bob = {"X-Runtime-Observer-User": "bob"}

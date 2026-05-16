@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS project_api_keys (
 );
 CREATE INDEX IF NOT EXISTS idx_project_api_keys_project ON project_api_keys(project_name, revoked_at);
 CREATE TABLE IF NOT EXISTS project_settings (
-  project_name TEXT PRIMARY KEY, display_name TEXT,
+  project_name TEXT PRIMARY KEY, display_name TEXT, group_name TEXT,
   created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS collector_settings (
@@ -282,10 +282,14 @@ class Database:
             conn.execute("ALTER TABLE apps ADD COLUMN project_name TEXT")
         if "display_name" not in columns:
             conn.execute("ALTER TABLE apps ADD COLUMN display_name TEXT")
+        project_settings_columns = {row[1] for row in conn.execute("PRAGMA table_info(project_settings)").fetchall()}
+        if "group_name" not in project_settings_columns:
+            conn.execute("ALTER TABLE project_settings ADD COLUMN group_name TEXT")
 
     def _apply_postgres_column_migrations(self, conn: Any) -> None:
         conn.execute("ALTER TABLE apps ADD COLUMN IF NOT EXISTS project_name TEXT")
         conn.execute("ALTER TABLE apps ADD COLUMN IF NOT EXISTS display_name TEXT")
+        conn.execute("ALTER TABLE project_settings ADD COLUMN IF NOT EXISTS group_name TEXT")
 
     def _migrate_apps_unique_service_name(self, conn: sqlite3.Connection) -> None:
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='apps'").fetchone()

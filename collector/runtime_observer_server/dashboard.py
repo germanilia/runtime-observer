@@ -185,6 +185,9 @@ a{color:inherit;text-decoration:none}
 .tbl td.dim{color:var(--muted)}
 .tbl td.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 .tbl td .sub{font-size:10.5px;color:var(--dim);margin-top:2px}
+.tbl td.status-cell,.tbl td.action-cell{max-width:none;width:1%;white-space:nowrap}
+.tbl td.action-cell{text-align:right}
+.tbl-wrap{overflow-x:auto}
 
 .pager{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-top:1px solid var(--rule);background:var(--bg-2);font-size:11px;color:var(--muted)}
 .pager .left,.pager .right{display:flex;align-items:center;gap:8px}
@@ -366,6 +369,11 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg-2);border:1px
 .login-err{font-size:11.5px;color:var(--bad);min-height:16px}
 
 /* ─────────────────────────  PROJECT SCREEN  ───────────────────────── */
+.proj-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.proj-toggle{display:inline-flex;border:1px solid var(--rule-2);background:var(--panel);padding:2px}
+.proj-toggle button{padding:4px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);transition:color .1s,background .1s}
+.proj-toggle button.active{background:var(--signal);color:#0a0b0d}
+.proj-filter{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:14px}
 .proj-card{background:var(--panel);border:1px solid var(--rule);padding:18px;cursor:pointer;transition:border-color .1s,background .1s}
 .proj-card:hover{border-color:var(--signal);background:var(--panel-2)}
@@ -457,6 +465,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg-2);border:1px
 
   <!-- SUB BAR (context filters; visible only inside a project) -->
   <div class="subbar" id="subbar">
+    <div class="sb-group">
+      <button class="sb-pill" id="backToProjectsBtn" title="Back to projects">← PROJECTS</button>
+    </div>
     <div class="sb-group">
       <span class="sb-label">WINDOW</span>
       <select class="sb-select" id="windowSelect">
@@ -588,6 +599,8 @@ var S = {
   routesSort: { col: "calls", dir: "desc" },
   routesMethodFilter: "",
   depsSort: { col: "calls", dir: "desc" },
+  projectHomeView: "groups",
+  selectedProjectGroup: "",
 };
 
 /* ───────────────────────────  HELPERS  ─────────────────────────── */
@@ -700,6 +713,7 @@ function inScope(rows){
 }
 function scopedApps(){ return S.apps.filter(function(a){ return !S.selectedProject || a.project_name === S.selectedProject; }); }
 function appName(a){ return a && (a.display_name || a.service_name) || "unknown"; }
+function projectGroup(p){ return (p && p.group_name) || "ungrouped"; }
 
 /* ───────────────────────────  TIME WINDOW  ─────────────────────────── */
 function logWindowQuery(){ return "log_window_minutes=" + encodeURIComponent(S.windowMinutes) + "&log_limit=1000"; }
@@ -816,23 +830,46 @@ function backToProjects(){
   S.selectedRouteId = null;
   S.selectedTraceId = null;
   S.routeState = null;
+  S.projectHomeView = "groups";
+  S.selectedProjectGroup = "";
   resetTracesPageState();
   render();
 }
-async function deleteProject(name){
-  var typed = prompt("Delete project \"" + name + "\" and ALL its telemetry (apps, routes, logs, traces, deps, SDK keys)?\n\nType the project name to confirm.");
-  if (typed !== name) return;
-  await api("/api/projects/" + encodeURIComponent(name), {method:"DELETE"});
-  if (S.selectedProject === name) backToProjects();
-  await refresh();
+function deleteProject(name){
+  openDrawer({
+    title: "Delete project",
+    sub: "This permanently deletes telemetry, apps, routes, logs, traces, dependencies, and SDK keys.",
+    bodyHTML: '<form id="deleteProjectForm" class="login-form">' +
+      '<div class="panel"><div class="panel-head"><span class="panel-title">PROJECT</span></div><div class="panel-body"><span class="mono">' + esc(name) + '</span></div></div>' +
+      '<label class="sb-label" for="deleteProjectConfirm">TYPE PROJECT NAME TO CONFIRM</label>' +
+      '<input id="deleteProjectConfirm" class="form-input" autocomplete="off" placeholder="' + esc(name) + '" required>' +
+      '<div id="deleteProjectError" class="login-err"></div>' +
+      '<div class="flex gap-2 mt-3"><button class="btn btn-danger" type="submit">DELETE PROJECT</button><button class="btn" type="button" id="cancelDeleteProject">CANCEL</button></div>' +
+    '</form>',
+  });
+  $("deleteProjectConfirm").focus();
+  $("cancelDeleteProject").onclick = closeDrawer;
+  $("deleteProjectForm").onsubmit = async function(ev){
+    ev.preventDefault();
+    if ($("deleteProjectConfirm").value !== name){
+      $("deleteProjectError").textContent = "Project name does not match.";
+      return;
+    }
+    await api("/api/projects/" + encodeURIComponent(name), {method:"DELETE"});
+    closeDrawer();
+    if (S.selectedProject === name) backToProjects();
+    await refresh();
+  };
 }
-async function createProjectKey(name){
-  var data = await api("/api/projects/" + encodeURIComponent(name) + "/api-keys", {method:"POST"});
+async function createProjectKey(name, groupName){
+  var opts = {method:"POST"};
+  if (groupName !== undefined) opts.body = JSON.stringify({group_name: groupName});
+  var data = await api("/api/projects/" + encodeURIComponent(name) + "/api-keys", opts);
   openDrawer({
     title: "New SDK key · " + data.project_name,
     sub: "Copy this key now. It is shown only once and stored as a hash.",
     bodyHTML: '<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn btn-primary" id="copyNewKey">COPY KEY</button><button class="btn" id="manageKeysFromNew" data-project="' + esc(data.project_name) + '">MANAGE KEYS</button></div>' +
-              '<div class="panel"><div class="panel-head"><span class="panel-title">PROJECT</span></div><div class="panel-body"><span class="mono">' + esc(data.project_name) + '</span></div></div>' +
+              '<div class="panel"><div class="panel-head"><span class="panel-title">PROJECT</span></div><div class="panel-body"><span class="mono">' + esc(data.project_name) + '</span>' + (data.group_name ? ' <span class="chip info">' + esc(data.group_name) + '</span>' : '') + '</div></div>' +
               '<div class="panel"><div class="panel-head"><span class="panel-title">API KEY</span></div><div class="panel-body"><pre style="margin:0">' + esc(data.api_key) + '</pre></div></div>',
   });
   $("copyNewKey").onclick = async function(){
@@ -843,16 +880,47 @@ async function createProjectKey(name){
   if (mk) mk.onclick = function(){ withLoading(function(){ return showProjectKeys(data.project_name); }); };
   await refresh();
 }
+async function updateProjectGroup(name, currentGroup){
+  var groupName = prompt("Project group (examples: development, production, work, personal). Leave blank for no group.", currentGroup || "");
+  if (groupName === null) return;
+  await api("/api/projects/" + encodeURIComponent(name) + "/settings", {method:"PUT", body: JSON.stringify({group_name: groupName})});
+  await refresh();
+}
+function promptNewProject(){
+  var lockedGroup = S.selectedProjectGroup || "";
+  openDrawer({
+    title: "New project",
+    sub: lockedGroup ? "This project will be added to group · <b>" + esc(lockedGroup) + "</b>" : "Choose a group or leave it blank for ungrouped.",
+    bodyHTML: '<form id="newProjectForm" class="login-form">' +
+      '<label class="sb-label" for="newProjectName">PROJECT NAME</label>' +
+      '<input id="newProjectName" class="form-input" autocomplete="off" placeholder="default" required>' +
+      '<label class="sb-label" for="newProjectGroup">GROUP</label>' +
+      '<input id="newProjectGroup" class="form-input" autocomplete="off" placeholder="optional" value="' + esc(lockedGroup) + '" ' + (lockedGroup ? 'readonly' : '') + '>' +
+      '<div class="flex gap-2 mt-3"><button class="btn btn-primary" type="submit">CREATE PROJECT</button><button class="btn" type="button" id="cancelNewProject">CANCEL</button></div>' +
+    '</form>',
+  });
+  var nameInput = $("newProjectName");
+  nameInput.focus();
+  $("cancelNewProject").onclick = closeDrawer;
+  $("newProjectForm").onsubmit = function(ev){
+    ev.preventDefault();
+    var name = String($("newProjectName").value || "").trim();
+    var groupName = lockedGroup || String($("newProjectGroup").value || "").trim();
+    if (!name) return;
+    closeDrawer();
+    withLoading(function(){ return createProjectKey(name, groupName); });
+  };
+}
 async function showProjectKeys(name){
   var keys = await api("/api/projects/" + encodeURIComponent(name) + "/api-keys");
   var rows = keys.length ? keys.map(function(k){
-    return '<tr><td>' + esc(k.name) + '</td><td class="mono dim">' + esc(k.prefix) + '</td><td class="dim">' + esc(fmtTs(k.created_at)) + '</td><td class="dim">' + esc(fmtTs(k.last_used_at)) + '</td><td>' + (k.revoked_at ? '<span class="chip bad">REVOKED</span>' : '<span class="chip good">ACTIVE</span>') + '</td><td>' + (k.revoked_at ? '' : '<button class="btn btn-sm btn-danger" data-revoke="' + esc(k.id) + '" data-project="' + esc(name) + '">REVOKE</button>') + '</td></tr>';
+    return '<tr><td>' + esc(k.name) + '</td><td class="mono dim">' + esc(k.prefix) + '</td><td class="dim">' + esc(fmtTs(k.created_at)) + '</td><td class="dim">' + esc(fmtTs(k.last_used_at)) + '</td><td class="status-cell">' + (k.revoked_at ? '<span class="chip bad">REVOKED</span>' : '<span class="chip good">ACTIVE</span>') + '</td><td class="action-cell">' + (k.revoked_at ? '' : '<button class="btn btn-sm btn-danger" data-revoke="' + esc(k.id) + '" data-project="' + esc(name) + '">REVOKE</button>') + '</td></tr>';
   }).join("") : '<tr><td colspan="6" class="dim" style="text-align:center;padding:24px">No SDK keys yet.</td></tr>';
   openDrawer({
     title: "SDK keys · " + name,
     sub: "Stored keys are hashed. Full key is only shown when generated.",
     bodyHTML: '<div style="margin-bottom:12px"><button class="btn btn-primary" data-genkey="' + esc(name) + '">+ NEW SDK KEY</button></div>' +
-              '<div class="panel" style="margin-bottom:0"><table class="tbl"><thead><tr><th>name</th><th>prefix</th><th>created</th><th>last used</th><th>status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>',
+              '<div class="panel tbl-wrap" style="margin-bottom:0"><table class="tbl"><thead><tr><th>name</th><th>prefix</th><th>created</th><th>last used</th><th>status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>',
   });
   document.querySelectorAll("[data-genkey]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return createProjectKey(b.dataset.genkey); }); }; });
   document.querySelectorAll("[data-revoke]").forEach(function(b){
@@ -1017,42 +1085,83 @@ function syncRailBadges(){
 }
 
 /* ───────────────────────────  RENDER · PROJECTS HOME  ─────────────────────────── */
+function projectCard(p){
+  var group = projectGroup(p);
+  return '<div class="proj-card" data-project="' + esc(p.project_name) + '">' +
+    '<div class="proj-name"><span>' + esc(p.display_name || p.project_name) + '</span><span class="chip ' + (p.error_count > 0 ? "bad" : (p.request_count > 0 ? "good" : "dim")) + '">' + (p.error_count > 0 ? p.error_count + " err" : (p.request_count > 0 ? "live" : "idle")) + '</span></div>' +
+    '<div style="margin-bottom:10px"><span class="chip info">' + esc(group) + '</span></div>' +
+    '<div class="proj-stats">' +
+      '<div class="ps"><span class="num">' + num(p.app_count) + '</span><span class="lbl">apps</span></div>' +
+      '<div class="ps"><span class="num">' + num(p.request_count) + '</span><span class="lbl">requests</span></div>' +
+      '<div class="ps"><span class="num">' + num(p.api_key_count) + '</span><span class="lbl">sdk keys</span></div>' +
+    '</div>' +
+    '<div class="proj-meta"><span>created · ' + esc(fmtTs(p.created_at)) + '</span><span>last seen · ' + esc(fmtRel(p.last_seen)) + '</span></div>' +
+    '<div class="proj-actions" onclick="event.stopPropagation()">' +
+      '<button class="btn btn-primary btn-sm" data-open="' + esc(p.project_name) + '">OPEN →</button>' +
+      '<button class="btn btn-sm" data-genkey="' + esc(p.project_name) + '">+ SDK KEY</button>' +
+      '<button class="btn btn-sm" data-keys="' + esc(p.project_name) + '">KEYS</button>' +
+      '<button class="btn btn-sm" data-group="' + esc(p.project_name) + '" data-current-group="' + esc(p.group_name || "") + '">GROUP</button>' +
+      '<button class="btn btn-sm btn-danger" data-delproj="' + esc(p.project_name) + '">DELETE</button>' +
+    '</div>' +
+  '</div>';
+}
+function projectGroups(){
+  var groups = {};
+  S.projects.forEach(function(p){
+    var name = projectGroup(p);
+    var g = groups[name] || {name:name, project_count:0, app_count:0, request_count:0, error_count:0, api_key_count:0, last_seen:""};
+    g.project_count += 1;
+    g.app_count += Number(p.app_count || 0);
+    g.request_count += Number(p.request_count || 0);
+    g.error_count += Number(p.error_count || 0);
+    g.api_key_count += Number(p.api_key_count || 0);
+    if (p.last_seen && (!g.last_seen || String(p.last_seen) > String(g.last_seen))) g.last_seen = p.last_seen;
+    groups[name] = g;
+  });
+  return Object.keys(groups).map(function(k){ return groups[k]; }).sort(function(a,b){ return String(b.last_seen || b.name).localeCompare(String(a.last_seen || a.name)); });
+}
+function groupCard(g){
+  return '<div class="proj-card" data-open-group="' + esc(g.name) + '">' +
+    '<div class="proj-name"><span>' + esc(g.name) + '</span><span class="chip ' + (g.error_count > 0 ? "bad" : (g.request_count > 0 ? "good" : "dim")) + '">' + (g.error_count > 0 ? g.error_count + " err" : (g.request_count > 0 ? "live" : "idle")) + '</span></div>' +
+    '<div class="proj-stats">' +
+      '<div class="ps"><span class="num">' + num(g.project_count) + '</span><span class="lbl">projects</span></div>' +
+      '<div class="ps"><span class="num">' + num(g.app_count) + '</span><span class="lbl">apps</span></div>' +
+      '<div class="ps"><span class="num">' + num(g.request_count) + '</span><span class="lbl">requests</span></div>' +
+    '</div>' +
+    '<div class="proj-meta"><span>sdk keys · ' + num(g.api_key_count) + '</span><span>last seen · ' + esc(fmtRel(g.last_seen)) + '</span></div>' +
+    '<div class="proj-actions"><button class="btn btn-primary btn-sm" data-open-group="' + esc(g.name) + '">SHOW PROJECTS →</button></div>' +
+  '</div>';
+}
 function renderProjects(){
-  var cards = S.projects.map(function(p){
-    return '<div class="proj-card" data-project="' + esc(p.project_name) + '">' +
-      '<div class="proj-name"><span>' + esc(p.project_name) + '</span><span class="chip ' + (p.error_count > 0 ? "bad" : (p.request_count > 0 ? "good" : "dim")) + '">' + (p.error_count > 0 ? p.error_count + " err" : (p.request_count > 0 ? "live" : "idle")) + '</span></div>' +
-      '<div class="proj-stats">' +
-        '<div class="ps"><span class="num">' + num(p.app_count) + '</span><span class="lbl">apps</span></div>' +
-        '<div class="ps"><span class="num">' + num(p.request_count) + '</span><span class="lbl">requests</span></div>' +
-        '<div class="ps"><span class="num">' + num(p.api_key_count) + '</span><span class="lbl">sdk keys</span></div>' +
-      '</div>' +
-      '<div class="proj-meta"><span>created · ' + esc(fmtTs(p.created_at)) + '</span><span>last seen · ' + esc(fmtRel(p.last_seen)) + '</span></div>' +
-      '<div class="proj-actions" onclick="event.stopPropagation()">' +
-        '<button class="btn btn-primary btn-sm" data-open="' + esc(p.project_name) + '">OPEN →</button>' +
-        '<button class="btn btn-sm" data-genkey="' + esc(p.project_name) + '">+ SDK KEY</button>' +
-        '<button class="btn btn-sm" data-keys="' + esc(p.project_name) + '">KEYS</button>' +
-        '<button class="btn btn-sm btn-danger" data-delproj="' + esc(p.project_name) + '">DELETE</button>' +
-      '</div>' +
-    '</div>';
-  }).join("");
+  var projects = S.selectedProjectGroup ? S.projects.filter(function(p){ return projectGroup(p) === S.selectedProjectGroup; }) : S.projects;
+  var cards = S.projectHomeView === "groups" ? projectGroups().map(groupCard).join("") : projects.map(projectCard).join("");
   if (!S.projects.length){
     cards = '<div class="empty" style="grid-column:1/-1"><div class="ico">∅</div><p>No projects yet. Create an SDK key for your first project, configure the SDK with that key, then exercise your app.</p><button class="btn btn-primary" id="firstKey">+ CREATE FIRST PROJECT</button></div>';
+  } else if (!cards) {
+    cards = '<div class="empty" style="grid-column:1/-1"><div class="ico">∅</div><p>No projects in this group.</p><button class="btn" id="clearGroupFilter">SHOW ALL PROJECTS</button></div>';
   }
+  var filterHTML = S.selectedProjectGroup && S.projectHomeView === "projects" ? '<div class="proj-filter"><button class="btn btn-sm" id="backToGroups">← GROUPS</button><span>group · ' + esc(S.selectedProjectGroup) + '</span><button class="btn btn-sm" id="clearGroupFilter">ALL PROJECTS</button></div>' : '<div></div>';
   $("main").innerHTML =
     '<div class="page">' +
       '<div class="page-header">' +
-        '<div><div class="page-title">Projects</div><div class="page-sub">Choose a project to inspect its telemetry</div></div>' +
+        '<div><div class="page-title">Projects</div><div class="page-sub">Choose a group or project to inspect telemetry</div></div>' +
         '<div class="page-actions"><button class="btn btn-primary" id="newProj">+ NEW PROJECT</button></div>' +
       '</div>' +
-      '<div class="page-body"><div class="proj-grid">' + cards + '</div></div>' +
+      '<div class="page-body"><div class="proj-toolbar">' + filterHTML + '<div class="proj-toggle" role="group" aria-label="Project home view"><button id="viewGroups" class="' + (S.projectHomeView === "groups" ? "active" : "") + '">Groups</button><button id="viewProjects" class="' + (S.projectHomeView === "projects" ? "active" : "") + '">Projects</button></div></div><div class="proj-grid">' + cards + '</div></div>' +
     '</div>';
-  document.querySelectorAll(".proj-card").forEach(function(c){ c.onclick = function(){ selectProject(c.dataset.project); }; });
+  document.querySelectorAll(".proj-card[data-project]").forEach(function(c){ c.onclick = function(){ selectProject(c.dataset.project); }; });
+  document.querySelectorAll("[data-open-group]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); S.selectedProjectGroup = b.dataset.openGroup; S.projectHomeView = "projects"; localStorage.setItem("ro:projectHomeView", "projects"); renderProjects(); }; });
   document.querySelectorAll("[data-open]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); selectProject(b.dataset.open); }; });
   document.querySelectorAll("[data-genkey]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return createProjectKey(b.dataset.genkey); }); }; });
   document.querySelectorAll("[data-keys]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return showProjectKeys(b.dataset.keys); }); }; });
+  document.querySelectorAll("[data-group]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return updateProjectGroup(b.dataset.group, b.dataset.currentGroup); }); }; });
   document.querySelectorAll("[data-delproj]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return deleteProject(b.dataset.delproj); }); }; });
-  var np = $("newProj"); if (np) np.onclick = function(){ var name = prompt("Project name", "default"); if (name) withLoading(function(){ return createProjectKey(name); }); };
-  var fk = $("firstKey"); if (fk) fk.onclick = function(){ var name = prompt("Project name", "default"); if (name) withLoading(function(){ return createProjectKey(name); }); };
+  var vg = $("viewGroups"); if (vg) vg.onclick = function(){ S.projectHomeView = "groups"; S.selectedProjectGroup = ""; localStorage.setItem("ro:projectHomeView", "groups"); renderProjects(); };
+  var vp = $("viewProjects"); if (vp) vp.onclick = function(){ S.projectHomeView = "projects"; localStorage.setItem("ro:projectHomeView", "projects"); renderProjects(); };
+  var bg = $("backToGroups"); if (bg) bg.onclick = function(){ S.projectHomeView = "groups"; S.selectedProjectGroup = ""; localStorage.setItem("ro:projectHomeView", "groups"); renderProjects(); };
+  var cf = $("clearGroupFilter"); if (cf) cf.onclick = function(){ S.selectedProjectGroup = ""; renderProjects(); };
+  var np = $("newProj"); if (np) np.onclick = promptNewProject;
+  var fk = $("firstKey"); if (fk) fk.onclick = promptNewProject;
 }
 
 /* ───────────────────────────  RENDER · PULSE  ─────────────────────────── */
@@ -1937,6 +2046,7 @@ function toggleRailExpanded(){
 document.querySelectorAll(".rail-btn[data-page]").forEach(function(b){ b.onclick = function(){ goto(b.dataset.page); }; });
 $("railToggle").onclick = toggleRailExpanded;
 $("brand").onclick = backToProjects;
+$("backToProjectsBtn").onclick = backToProjects;
 $("crumbProject").onclick = openProjectMenu;
 $("crumbApp").onclick = openAppMenu;
 $("refreshBtn").onclick = function(){ withLoading(refresh); };

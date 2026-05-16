@@ -48,8 +48,6 @@ def _project_from_api_key(api_key: str, db: Database, settings: Settings) -> str
 
 def require_ingest_auth(request: Request, api_key: str | None = None, db: Database | None = None, settings: Settings | None = None) -> str | None:
     resolved_settings = settings or request.app.state.settings
-    if resolved_settings.insecure_dev_mode:
-        return None
     token = api_key or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Runtime Observer API key is required")
@@ -148,12 +146,10 @@ def hidden_route_clause(user_id: str, route_column: str = "routes.id", app_colum
 
 def visible_apps_clause(user_id: str, alias: str = "apps", *, settings: Settings | None = None) -> tuple[str, list[Any]]:
     clause, params = hidden_preference_clause(alias, "app", user_id)
-    if settings is None or not settings.insecure_dev_mode:
-        clause = (
-            f"({clause}) AND {alias}.project_name IN ("
-            "SELECT project_name FROM project_api_keys "
-            "UNION SELECT project_name FROM project_settings)"
-        )
+    clause = (
+        f"({clause}) AND {alias}.project_name IN ("
+        "SELECT project_name FROM project_api_keys WHERE revoked_at IS NULL)"
+    )
     return clause, params
 
 def log_window_start(log_window_minutes: int | None) -> str | None:
@@ -195,6 +191,21 @@ def generate_project_api_key() -> tuple[str, str]:
     return f"ro_{key_id}_{secret}", f"ro_{key_id}"
 
 RETENTION_SETTING_KEY = "retention"
+
+
+def normalize_project_group(value: Any) -> str | None:
+    group_name = str(value or "").strip()
+    return group_name[:80] or None
+
+
+async def optional_json_body(request: Request) -> dict[str, Any]:
+    if request.headers.get("content-length") in (None, "", "0"):
+        return {}
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return {}
+    return body if isinstance(body, dict) else {}
 
 
 def default_retention_settings(settings: Settings) -> dict[str, int]:
@@ -709,8 +720,6 @@ def create_router() -> APIRouter:
                     WITH project_sources AS (
                       SELECT project_name, MIN(first_seen) created_at FROM apps WHERE {clause} GROUP BY project_name
                       UNION ALL
-                      SELECT project_name, created_at FROM project_settings
-                      UNION ALL
                       SELECT project_name, MIN(created_at) created_at FROM project_api_keys WHERE revoked_at IS NULL GROUP BY project_name
                     ),
                     project_names AS (
@@ -718,15 +727,18 @@ def create_router() -> APIRouter:
                     )
                     SELECT project_names.project_name,
                       project_names.created_at,
+                      project_settings.display_name,
+                      project_settings.group_name,
                       COUNT(DISTINCT apps.id) app_count,
                       MAX(apps.last_seen) last_seen,
                       COALESCE(SUM(routes.call_count), 0) request_count,
                       COALESCE(SUM(routes.error_count), 0) error_count,
                       (SELECT COUNT(*) FROM project_api_keys WHERE project_api_keys.project_name=project_names.project_name AND revoked_at IS NULL) api_key_count
                     FROM project_names
+                    LEFT JOIN project_settings ON project_settings.project_name=project_names.project_name
                     LEFT JOIN apps ON apps.project_name=project_names.project_name
                     LEFT JOIN routes ON routes.app_id=apps.id
-                    GROUP BY project_names.project_name, project_names.created_at
+                    GROUP BY project_names.project_name, project_names.created_at, project_settings.display_name, project_settings.group_name
                     ORDER BY COALESCE(MAX(apps.last_seen), project_names.project_name) DESC
                     """,
                     params,
@@ -762,22 +774,45 @@ def create_router() -> APIRouter:
             deleted = _delete_project(conn, project_name)
         return {"status": "deleted", "project_name": project_name, "deleted": deleted}
 
+    @router.put("/api/projects/{project_name}/settings")
+    async def update_project_settings(project_name: str, request: Request, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        body = await optional_json_body(request)
+        group_name = normalize_project_group(body.get("group_name"))
+        display_name = str(body.get("display_name") or project_name).strip()[:120] or project_name
+        timestamp = now_iso()
+        with db.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_settings(project_name, display_name, group_name, created_by, created_at, updated_at)
+                VALUES(?,?,?,?,?,?)
+                ON CONFLICT(project_name) DO UPDATE SET display_name=excluded.display_name, group_name=excluded.group_name, updated_at=excluded.updated_at
+                """,
+                (project_name, display_name, group_name, user_id, timestamp, timestamp),
+            )
+        return {"project_name": project_name, "display_name": display_name, "group_name": group_name}
+
     @router.post("/api/projects/{project_name}/api-keys")
-    def create_project_api_key(project_name: str, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+    async def create_project_api_key(project_name: str, request: Request, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+        body = await optional_json_body(request)
         name = project_name[:80] or "default"
+        group_name = normalize_project_group(body.get("group_name"))
         token, prefix = generate_project_api_key()
         key_id = uuid.uuid4().hex
         timestamp = now_iso()
         with db.connect() as conn:
             conn.execute(
-                "INSERT INTO project_settings(project_name, display_name, created_by, created_at, updated_at) VALUES(?,?,?,?,?) ON CONFLICT(project_name) DO UPDATE SET updated_at=excluded.updated_at",
-                (project_name, project_name, user_id, timestamp, timestamp),
+                """
+                INSERT INTO project_settings(project_name, display_name, group_name, created_by, created_at, updated_at)
+                VALUES(?,?,?,?,?,?)
+                ON CONFLICT(project_name) DO UPDATE SET group_name=COALESCE(excluded.group_name, project_settings.group_name), updated_at=excluded.updated_at
+                """,
+                (project_name, project_name, group_name, user_id, timestamp, timestamp),
             )
             conn.execute(
                 "INSERT INTO project_api_keys(id, project_name, name, key_hash, prefix, created_by, created_at) VALUES(?,?,?,?,?,?,?)",
                 (key_id, project_name, name, _api_key_hash(token), prefix, user_id, timestamp),
             )
-        return {"id": key_id, "project_name": project_name, "name": name, "api_key": token, "prefix": prefix, "created_at": timestamp}
+        return {"id": key_id, "project_name": project_name, "name": name, "group_name": group_name, "api_key": token, "prefix": prefix, "created_at": timestamp}
 
     @router.delete("/api/projects/{project_name}/api-keys/{key_id}")
     def revoke_project_api_key(project_name: str, key_id: str, db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, str]:
