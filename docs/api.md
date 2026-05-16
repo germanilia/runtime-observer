@@ -9,6 +9,8 @@
 
 The Python SDK and Node.js SDK `RUNTIME_OBSERVER_ENDPOINT` should be the collector base URL, for example `http://127.0.0.1:4319`; SDKs append the appropriate ingest path. Set `RUNTIME_OBSERVER_PROJECT_NAME`, `RUNTIME_OBSERVER_SERVICE_NAME`, and `RUNTIME_OBSERVER_API_KEY` in each application.
 
+Supported event kinds are `app_started`, `dependency_inventory`, `route_discovered`, `request_started`, `request_finished`, `span_started`, `span_finished`, `exception_raised`, `db_query`, `http_client_call`, `llm_call`, `log_record`, `metric_counter`, `sdk_diagnostic`, `function_called`, `function_returned`, `background_job_started`, `background_job_finished`, and `tool_call`. SDK users can inject code-level enrichment by emitting these events directly when automatic instrumentation does not have enough business context.
+
 Both ingest endpoints respond with `{ "accepted": N, "rejected": N, "queued": bool, "server_time": "..." }`. When `queued` is `true` the events have been placed on the ingest buffer (SQS or memory) and will be written to the database by a background worker; `false` means they were written synchronously. Error responses: `429` queue full, `413` single event exceeds SQS message size limit, `503` ingest backend unavailable.
 
 ## Dashboard and query APIs

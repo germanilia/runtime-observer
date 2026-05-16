@@ -17,7 +17,7 @@ Every event uses the same envelope:
 - `timestamp`: UTC ISO-8601 timestamp.
 - `service`: service metadata with `name`, `language`, `runtime_version`, and `sdk_version`.
 - `trace_id`, `span_id`, `parent_span_id`: nullable correlation identifiers.
-- `kind`: one of the required event kinds.
+- `kind`: one of the supported event kinds: `app_started`, `dependency_inventory`, `route_discovered`, `request_started`, `request_finished`, `span_started`, `span_finished`, `exception_raised`, `db_query`, `http_client_call`, `llm_call`, `log_record`, `metric_counter`, `sdk_diagnostic`, `function_called`, `function_returned`, `background_job_started`, `background_job_finished`, or `tool_call`.
 - `payload`: kind-specific payload validated by the schema definition matching `kind`.
 
 ## Span naming conventions
@@ -39,4 +39,4 @@ Every event uses the same envelope:
 - Patch-compatible additions may add optional fields to payload definitions without changing `schema_version`.
 - New required fields, renamed fields, removed fields, or changed semantics require a new minor schema version.
 - SDKs should send the newest schema they support; collectors should reject unknown major versions with a useful error.
-- Raw secrets, request bodies, LLM prompts, credentials, and unbounded object dumps are not allowed in examples or default SDK output.
+- Code-level enrichment may add `metric_counter`, function, background-job, and tool events from the base application code, but raw secrets, request bodies, LLM prompts, credentials, and unbounded object dumps are not allowed in examples or default SDK output.

@@ -29,6 +29,11 @@ VALID_EVENT_KINDS = {
     "log_record",
     "metric_counter",
     "sdk_diagnostic",
+    "function_called",
+    "function_returned",
+    "background_job_started",
+    "background_job_finished",
+    "tool_call",
 }
 
 

@@ -208,6 +208,49 @@ observer.emit("metric_counter", {
 })
 ```
 
+### Manual code injection for richer metrics
+
+Automatic instrumentation captures framework and dependency behavior, but the best business metrics often require a small SDK call inside the base application code where the domain context exists. This is supported and expected: inject `start_span()`, `capture_exception()`, `logging` calls, or schema-compatible `observer.emit()` calls at important boundaries.
+
+Good injection points include order creation, checkout transitions, cache decisions, queue/job starts and finishes, tool invocations, feature-flag branches, and expensive internal functions:
+
+```python
+def create_order(cart, user):
+    with observer.start_span("price quote", kind="function", attributes={"cart_size": len(cart.items)}):
+        quote = calculate_quote(cart)
+
+    observer.emit("function_called", {
+        "name": "reserve_inventory",
+        "attributes": {"item_count": len(cart.items)},
+    })
+    reservation = reserve_inventory(cart)
+    observer.emit("function_returned", {
+        "name": "reserve_inventory",
+        "status": "ok",
+        "attributes": {"reserved": len(reservation.items)},
+    })
+
+    observer.emit("metric_counter", {
+        "name": "orders.created",
+        "value": 1,
+        "attributes": {"channel": "web", "currency": quote.currency},
+    })
+    return persist_order(user, quote, reservation)
+```
+
+For workers and agents, use the lifecycle event kinds directly:
+
+```python
+observer.emit("background_job_started", {"name": "nightly_rollup", "attributes": {"queue": "billing"}})
+try:
+    run_rollup()
+    observer.emit("background_job_finished", {"name": "nightly_rollup", "status": "ok"})
+except Exception as exc:
+    observer.capture_exception(exc, extra={"job": "nightly_rollup"})
+    observer.emit("background_job_finished", {"name": "nightly_rollup", "status": "error", "error_type": type(exc).__name__})
+    raise
+```
+
 Add useful, non-secret values as span attributes, log `extra`, or event payload fields. Good enrichment fields include operation names, route-independent business identifiers, queue names, cache hit/miss, model/provider names, row counts, item counts, and feature flags. Avoid raw prompts, passwords, tokens, full request bodies, or customer PII unless you have explicitly configured redaction and production capture mode.
 
 ### Python enrichment options
@@ -221,10 +264,13 @@ Add useful, non-secret values as span attributes, log `extra`, or event payload 
 | Outbound HTTP | `observer.instrument_requests()` / `observer.instrument_httpx()` | Dependency cards and dependency details |
 | Database calls | `observer.instrument_sqlalchemy(engine)` | DB dependency cards, query timing, related traces |
 | LLM calls | `observer.instrument_litellm()` | LLM dependency cards, model/provider metadata, durations |
-| Business counters | `observer.emit("metric_counter", {...})` | Raw event stream and future metric aggregation |
+| Business counters | `observer.emit("metric_counter", {...})` | Raw event stream and metric-oriented context |
+| Injected function events | `observer.emit("function_called", {...})` / `observer.emit("function_returned", {...})` | Explicit business operation breadcrumbs |
+| Worker lifecycle | `observer.emit("background_job_started", {...})` / `observer.emit("background_job_finished", {...})` | Job/queue visibility without FastAPI |
+| Agent/tool calls | `observer.emit("tool_call", {...})` | Tool execution context for agent-style apps |
 | Custom events | `observer.emit("log_record", {...})` or another supported event kind | Extra searchable context in logs/events |
 
-Supported event kinds are `app_started`, `dependency_inventory`, `route_discovered`, `request_started`, `request_finished`, `span_started`, `span_finished`, `exception_raised`, `db_query`, `http_client_call`, `llm_call`, `log_record`, `metric_counter`, and `sdk_diagnostic`.
+Supported event kinds are `app_started`, `dependency_inventory`, `route_discovered`, `request_started`, `request_finished`, `span_started`, `span_finished`, `exception_raised`, `db_query`, `http_client_call`, `llm_call`, `log_record`, `metric_counter`, `sdk_diagnostic`, `function_called`, `function_returned`, `background_job_started`, `background_job_finished`, and `tool_call`.
 
 ## Browser and Node.js SDK
 
@@ -276,7 +322,7 @@ observer.emit('log_record', {
 });
 ```
 
-`observer.installBrowserHooks()` captures browser `error`, `unhandledrejection`, and page-hide flushes. `observer.instrumentFetch()` records browser `fetch` calls. Use `observer.emit()` for page-load, user action, feature, and performance milestones you want to see even when no error occurs.
+`observer.installBrowserHooks()` captures browser `error`, `unhandledrejection`, and page-hide flushes. `observer.instrumentFetch()` records browser `fetch` calls. Use `observer.emit()` for page-load, user action, feature, and performance milestones you want to see even when no error occurs. These calls are the browser equivalent of code-level enrichment: place them where the UI has useful product context.
 
 Useful browser enrichment examples:
 
@@ -358,7 +404,7 @@ Because the browser endpoint accepts the API key in the URL, only use browser in
 | Frontend/server startup | `observer.emit('app_started', {...})` | Creates the app/service and shows recent activity |
 | Browser runtime errors | `observer.installBrowserHooks()` | Error logs for `window.error` and unhandled promises |
 | User actions | `observer.emit('log_record', {...})` | Searchable frontend activity and context |
-| Business counters | `observer.emit('metric_counter', {...})` | Raw metric events and future metric aggregation |
+| Business counters | `observer.emit('metric_counter', {...})` | Raw metric events and metric-oriented context |
 | Timed function work | `observer.startSpan(name, fn, options)` | Function timing in event/trace context |
 | Handled errors | `observer.captureException(error, extra)` | Error records even if the UI/server recovers |
 | Cross-service correlation | pass `{ traceId, spanId, parentSpanId }` as the third argument or use Node async context | Groups related browser, Node, and backend events by trace |
@@ -405,5 +451,6 @@ Useful endpoints:
 - **Double `/v1/ingest/v1/ingest` URL:** remove `/v1/ingest` from `RUNTIME_OBSERVER_ENDPOINT`.
 - **No exports in local dev:** provide an API key or set `RUNTIME_OBSERVER_INSECURE_DEV=true` for SDK experiments.
 - **Missing dependency calls:** make sure the dependency package is installed before the observer starts, or call the relevant `observer.instrument_*()` method explicitly.
+- **Missing business metrics:** automatic instrumentation cannot infer product semantics; inject `observer.emit("metric_counter", ...)`, function events, job lifecycle events, or spans at the point in code where the business action happens.
 - **Logs missing trace IDs:** ensure logging happens inside the FastAPI request context or inside a span created by the observer.
 - **Sensitive data concerns:** use `RUNTIME_OBSERVER_CAPTURE_MODE=prod` and keep `RUNTIME_OBSERVER_CAPTURE_DB_QUERY_VALUES=false` in production-like environments.

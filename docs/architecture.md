@@ -16,9 +16,10 @@ Instrumented app → runtime_observer SDK → /v1/ingest → ingest buffer (dire
 
 - Resolve runtime configuration from explicit overrides and environment variables.
 - Propagate trace/span context across async and framework boundaries.
-- Capture route, span, log, exception, dependency, and LLM events.
+- Capture route, span, log, exception, dependency, metric, background-job, tool, and LLM events.
 - Redact secrets and summarize high-risk payloads before export.
 - Queue and export events without blocking the application hot path.
+- Allow code-level enrichment in the base application through `start_span()`, `capture_exception()`, logging, and direct `emit()` calls for business metrics that automatic instrumentation cannot infer.
 
 ## Collector responsibilities
 

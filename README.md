@@ -1,6 +1,6 @@
 # Runtime Observer
 
-Runtime Observer is a lightweight telemetry contract, Python SDK, and local collector dashboard for understanding application runtime behavior: routes, traces, logs, exceptions, dependency calls, and LLM usage.
+Runtime Observer is a lightweight telemetry contract, Python/JavaScript SDK, and local collector dashboard for understanding application runtime behavior: routes, traces, logs, exceptions, dependency calls, metrics, background jobs, tools, and LLM usage.
 
 ## Repository layout
 
@@ -18,7 +18,7 @@ just test
 just run
 ```
 
-Open the collector dashboard at `http://127.0.0.1:4319/`. `just run` uses live reload and frees port 4319 before starting so repeated local runs are predictable. The first dashboard login creates the admin user; later logins require that username/password. After login, the dashboard opens on project selection; choose a project to inspect its apps, routes, traces, logs, dependencies, and generated SDK API keys.
+Open the collector dashboard at `http://127.0.0.1:4319/`. `just run` uses live reload and frees port 4319 before starting so repeated local runs are predictable. The first dashboard login creates the admin user; later logins require that username/password. After login, the dashboard opens on project selection; choose a project to inspect its apps, routes, traces, logs, dependencies, activity metrics, and generated SDK API keys.
 
 To install directly from GitHub without cloning:
 
@@ -39,6 +39,19 @@ Use `runtime-observer/browser` in frontend bundles and `runtime-observer/node` i
 
 See [`docs/integration.md`](docs/integration.md) for full setup and examples.
 
+## Metrics and code-level enrichment
+
+Runtime Observer supports both automatic instrumentation and deliberate code injection into the application code path. Add small SDK calls where the base code has the business context you care about:
+
+```python
+with observer.start_span("calculate quote", kind="function", attributes={"cart_size": len(cart.items)}):
+    quote = calculate_quote(cart)
+
+observer.emit("metric_counter", {"name": "orders.created", "value": 1, "attributes": {"channel": "web"}})
+```
+
+Use this for metrics that automatic HTTP/database/LLM instrumentation cannot infer: business counters, queue/job lifecycle events, tool calls, feature usage, and important function boundaries. The shared schema also accepts `function_called`, `function_returned`, `background_job_started`, `background_job_finished`, and `tool_call` events for deeper manual enrichment.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and replace placeholder secrets for non-local use.
@@ -58,7 +71,7 @@ Important settings:
 
 ## Documentation
 
-- [`docs/integration.md`](docs/integration.md) — GitHub installation, collector setup, FastAPI/logging/dependency/browser ingestion, dashboard usage, preferences, and troubleshooting.
+- [`docs/integration.md`](docs/integration.md) — GitHub installation, collector setup, FastAPI/logging/dependency/browser ingestion, manual code-level enrichment, dashboard usage, preferences, and troubleshooting.
 - [`docs/api.md`](docs/api.md) — ingestion, dashboard, query, and agent tool APIs.
 - [`docs/deployment.md`](docs/deployment.md) — local process, Docker Compose, EC2 deployment, and security checklist.
 

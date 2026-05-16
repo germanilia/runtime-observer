@@ -51,6 +51,14 @@ def test_context_propagates_across_asyncio():
     assert asyncio.run(run()) == "trace-1"
 
 
+def test_python_sdk_supports_all_schema_event_kinds():
+    observer = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, capture_logs=False)
+    observer.exporter.shutdown(timeout=0.1)
+    event = observer.emit("function_called", {"name": "calculate_quote", "attributes": {"source": "manual_instrumentation"}})
+    assert event["kind"] == "function_called"
+    assert event["payload"]["name"] == "calculate_quote"
+
+
 def test_exporter_drops_when_queue_full():
     observer = init_runtime_observer(project_name="test", service_name="test", enabled=True, insecure_local_dev=True, max_queue_size=1, capture_logs=False)
     observer.exporter.shutdown(timeout=0.1)
