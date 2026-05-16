@@ -220,12 +220,19 @@ class Database:
             raw_conn = psycopg.connect(self.url, row_factory=dict_row)
             conn: Any = PostgresConnection(raw_conn)
         else:
+            # Self-heal: if the SQLite file is missing or empty (e.g. deleted out
+            # from under us in tests or dev), re-apply the schema. We don't run
+            # _apply_schema on every connect anymore because the migration check
+            # is expensive when multiplied across every API request.
+            needs_init = not self.path.exists() or self.path.stat().st_size == 0
             conn = sqlite3.connect(self.path, timeout=30)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=30000")
-        try:
-            if not self.is_postgres:
+            if needs_init:
                 self._apply_schema(conn)
+                conn.execute("ANALYZE")
+                conn.commit()
+        try:
             yield conn
             conn.commit()
         finally:
@@ -248,7 +255,20 @@ class Database:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=30000")
             self._apply_schema(conn)
+            # Populate query planner statistics so SQLite picks the right indexes
+            # for aggregations on events/logs (otherwise it falls back to scanning
+            # the wrong index, e.g. idx_events_trace for kind GROUP BYs).
+            conn.execute("ANALYZE")
             conn.commit()
+
+    def optimize(self) -> None:
+        """Refresh query planner stats. Cheap incremental analyze."""
+        if self.is_postgres:
+            with self.connect() as conn:
+                conn.execute("ANALYZE")
+            return
+        with self.connect() as conn:
+            conn.execute("PRAGMA optimize")
 
     def _apply_schema(self, conn: Any) -> None:
         if self.is_postgres:

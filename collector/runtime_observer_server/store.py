@@ -127,55 +127,63 @@ class CollectorStore:
             exception_cutoff = (now - timedelta(days=exception_retention_days or max(retention_days, 30))).isoformat().replace("+00:00", "Z")
             aggregate_cutoff = (now - timedelta(days=aggregate_retention_days or 365)).isoformat().replace("+00:00", "Z")
             self._prepare_retention_protection(conn, now, exception_window_minutes)
-            conn.execute(
-                """
-                DELETE FROM logs
-                WHERE timestamp < ?
-                  AND UPPER(COALESCE(level,'')) NOT IN ('ERROR','CRITICAL')
-                  AND id NOT IN (SELECT id FROM protected_logs)
-                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
-                """,
-                (regular_log_cutoff,),
-            )
-            conn.execute(
-                """
-                DELETE FROM logs
-                WHERE timestamp < ? AND timestamp < ?
-                  AND id NOT IN (SELECT id FROM protected_logs)
-                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
-                """,
-                (cutoff, regular_log_cutoff),
-            )
-            conn.execute(
-                """
-                DELETE FROM events
-                WHERE timestamp < ?
-                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
-                """,
-                (raw_event_cutoff,),
-            )
-            conn.execute("DELETE FROM route_durations WHERE timestamp < ?", (duration_cutoff,))
-            conn.execute("DELETE FROM dependency_durations WHERE timestamp < ?", (duration_cutoff,))
-            conn.execute(
-                """
-                DELETE FROM spans
-                WHERE COALESCE(finished_at, started_at) < ?
-                  AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
-                """,
-                (trace_cutoff,),
-            )
-            conn.execute(
-                """
-                DELETE FROM traces
-                WHERE COALESCE(finished_at, started_at) < ?
-                  AND COALESCE(id, '') NOT IN (SELECT trace_id FROM protected_traces)
-                """,
-                (trace_cutoff,),
-            )
-            conn.execute("DELETE FROM exceptions WHERE last_seen < ?", (exception_cutoff,))
-            conn.execute("DELETE FROM route_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
-            conn.execute("DELETE FROM dependency_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
-            conn.execute("DELETE FROM log_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,))
+            # Commit so concurrent ingest writers can take the writer lock between deletes.
+            # Temp tables created above live for the connection's lifetime, not the transaction.
+            conn.commit()
+            deletions: list[tuple[str, tuple[Any, ...]]] = [
+                (
+                    """
+                    DELETE FROM logs
+                    WHERE timestamp < ?
+                      AND UPPER(COALESCE(level,'')) NOT IN ('ERROR','CRITICAL')
+                      AND id NOT IN (SELECT id FROM protected_logs)
+                      AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                    """,
+                    (regular_log_cutoff,),
+                ),
+                (
+                    """
+                    DELETE FROM logs
+                    WHERE timestamp < ? AND timestamp < ?
+                      AND id NOT IN (SELECT id FROM protected_logs)
+                      AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                    """,
+                    (cutoff, regular_log_cutoff),
+                ),
+                (
+                    """
+                    DELETE FROM events
+                    WHERE timestamp < ?
+                      AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                    """,
+                    (raw_event_cutoff,),
+                ),
+                ("DELETE FROM route_durations WHERE timestamp < ?", (duration_cutoff,)),
+                ("DELETE FROM dependency_durations WHERE timestamp < ?", (duration_cutoff,)),
+                (
+                    """
+                    DELETE FROM spans
+                    WHERE COALESCE(finished_at, started_at) < ?
+                      AND COALESCE(trace_id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                    """,
+                    (trace_cutoff,),
+                ),
+                (
+                    """
+                    DELETE FROM traces
+                    WHERE COALESCE(finished_at, started_at) < ?
+                      AND COALESCE(id, '') NOT IN (SELECT trace_id FROM protected_traces)
+                    """,
+                    (trace_cutoff,),
+                ),
+                ("DELETE FROM exceptions WHERE last_seen < ?", (exception_cutoff,)),
+                ("DELETE FROM route_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,)),
+                ("DELETE FROM dependency_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,)),
+                ("DELETE FROM log_metrics_hourly WHERE bucket_start < ?", (aggregate_cutoff,)),
+            ]
+            for sql, params in deletions:
+                conn.execute(sql, params)
+                conn.commit()
 
     def _stored_retention_settings(self, conn: sqlite3.Connection) -> dict[str, Any]:
         row = conn.execute("SELECT value_json FROM collector_settings WHERE key='retention'").fetchone()

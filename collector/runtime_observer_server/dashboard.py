@@ -1,1267 +1,1971 @@
 from __future__ import annotations
 
 
-DASHBOARD_HTML = r'''
-<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Runtime Observer</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+DASHBOARD_HTML = r'''<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Runtime Observer</title>
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a3e635' stroke-width='2'><circle cx='12' cy='12' r='3'/><circle cx='12' cy='12' r='9'/><path d='M12 3v3M12 18v3M3 12h3M18 12h3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-[data-theme="dark"]{--bg:#0a0e14;--bg-subtle:#0f1520;--surface:#131d2b;--surface-raised:#182233;--border:#1e2d3d;--border-subtle:#162030;--text:#e8f0f7;--text-muted:#7a9bb5;--text-subtle:#4a6a85;--primary:#3b82f6;--primary-hover:#2563eb;--primary-muted:rgba(59,130,246,.15);--green:#22c55e;--green-muted:rgba(34,197,94,.15);--yellow:#f59e0b;--yellow-muted:rgba(245,158,11,.15);--red:#ef4444;--red-muted:rgba(239,68,68,.15);--blue:#60a5fa;--blue-muted:rgba(96,165,250,.15);--shadow:0 4px 24px rgba(0,0,0,.4)}
-[data-theme="light"]{--bg:#f8fafc;--bg-subtle:#f1f5f9;--surface:#ffffff;--surface-raised:#f8fafc;--border:#e2e8f0;--border-subtle:#f1f5f9;--text:#0f172a;--text-muted:#64748b;--text-subtle:#94a3b8;--primary:#3b82f6;--primary-hover:#2563eb;--primary-muted:rgba(59,130,246,.1);--green:#16a34a;--green-muted:rgba(22,163,74,.1);--yellow:#d97706;--yellow-muted:rgba(217,119,6,.1);--red:#dc2626;--red-muted:rgba(220,38,38,.1);--blue:#2563eb;--blue-muted:rgba(37,99,235,.1);--shadow:0 4px 24px rgba(0,0,0,.08)}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100vh;overflow:hidden}
-body{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5}
-body.loading,body.loading *{cursor:wait!important}
-#app-shell{height:100vh;display:flex;flex-direction:column;overflow:hidden}
-/* TOPBAR */
-.topbar{height:56px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border);z-index:20;position:relative}
-.topbar-brand{display:flex;align-items:center;gap:10px;flex:none}
-.brand-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#7c3aed);display:flex;align-items:center;justify-content:center;flex:none}
-.brand-icon svg{color:#fff}
-.brand-name{font-size:15px;font-weight:700;letter-spacing:-.3px;color:var(--text)}
-.topbar-divider{width:1px;height:24px;background:var(--border);flex:none}
-.topbar-project{font-size:13px;font-weight:500;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
-.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);flex:none}
-.live-text{font-size:12px;color:var(--text-muted)}
-.icon-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px;cursor:pointer;color:var(--text-muted);display:flex;align-items:center;justify-content:center;transition:border-color .15s,color .15s}
-.icon-btn:hover{border-color:var(--primary);color:var(--text)}
-.select-sm{background:var(--surface-raised);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font:inherit;font-size:12px;cursor:pointer}
-.select-sm:hover{border-color:var(--primary)}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface-raised);color:var(--text);transition:border-color .15s,background .15s}
-.btn:hover{border-color:var(--primary);background:var(--primary-muted)}
-.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
-.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
-.btn-danger{border-color:var(--red-muted);color:var(--red)}
-.btn-danger:hover{background:var(--red-muted);border-color:var(--red)}
-.env-badge{font-size:11px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:4px;border:1px solid var(--border);color:var(--text-muted);background:var(--bg-subtle)}
-/* BODY AREA */
-.body-area{flex:1;overflow:hidden;display:flex;flex-direction:column}
-/* PROJECT SCREEN */
-#projectScreen{flex:1;overflow-y:auto;padding:24px}
-.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;max-width:1100px;margin:0 auto}
-.project-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px}
-.project-card:hover{border-color:var(--primary)}
-.project-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.project-name{font-size:16px;font-weight:600}
-.project-meta{font-size:12px;color:var(--text-muted)}
-.project-actions{display:flex;gap:8px;flex-wrap:wrap}
-.project-screen-header{max-width:1100px;margin:0 auto 20px}
-.project-screen-title{font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px}
-.project-screen-sub{font-size:13px;color:var(--text-muted)}
-.empty-projects{text-align:center;padding:60px 24px;color:var(--text-muted);max-width:480px;margin:0 auto}
-.empty-projects p{margin-bottom:16px}
-/* DASHBOARD SHELL */
-#dashboardShell{flex:1;overflow:hidden;display:grid;grid-template-columns:280px minmax(0,1fr)}
-/* SIDEBAR */
-.sidebar{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
-.sidebar-apps{padding:10px 10px 0;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;flex:none}
-.app-tab{padding:5px 10px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid transparent;color:var(--text-muted);background:none;white-space:nowrap;transition:all .15s}
-.app-tab:hover{color:var(--text);background:var(--surface-raised)}
-.app-tab.active{color:var(--primary);background:var(--primary-muted);border-color:var(--primary)}
-.sidebar-search{padding:10px;border-bottom:1px solid var(--border);flex:none}
-.search-wrap{position:relative;display:flex;align-items:center}
-.search-icon{position:absolute;left:9px;color:var(--text-subtle);pointer-events:none}
-.search-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 9px 7px 32px;font:inherit;font-size:13px;color:var(--text)}
-.search-input::placeholder{color:var(--text-subtle)}
-.search-input:focus{outline:none;border-color:var(--primary)}
-.sidebar-filter{padding:6px 10px;border-bottom:1px solid var(--border);flex:none}
-.filter-toggle{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font:inherit;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:none;color:var(--text-muted);transition:all .15s;width:100%}
-.filter-toggle:hover{background:var(--surface-raised);color:var(--text)}
-.filter-toggle.active{background:var(--yellow-muted);border-color:var(--yellow);color:var(--yellow)}
-.sidebar-routes{flex:1;overflow-y:auto;padding:6px}
-/* ROUTE ITEMS */
-.route-item{width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:9px 10px;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:6px;transition:background .1s,border-color .1s;position:relative}
-.route-item:hover{background:var(--surface-raised);border-color:var(--border)}
-.route-item.active{background:var(--primary-muted);border-color:var(--primary)}
-.route-item.hidden-route{opacity:.45}
-.route-item-body{flex:1;min-width:0}
-.route-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
-.route-path{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
-.route-meta{font-size:11px;color:var(--text-muted);display:flex;gap:4px}
-.route-item-actions{opacity:0;flex:none;transition:opacity .15s}
-.route-item:hover .route-item-actions{opacity:1}
-/* METHOD BADGES */
-.method-badge{font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 6px;border-radius:4px;flex:none}
-.method-GET{background:var(--green-muted);color:var(--green)}
-.method-POST{background:var(--blue-muted);color:var(--blue)}
-.method-PUT,.method-PATCH{background:var(--yellow-muted);color:var(--yellow)}
-.method-DELETE{background:var(--red-muted);color:var(--red)}
-.method-OTHER{background:var(--primary-muted);color:var(--primary)}
-/* MAIN CONTENT */
-.main-content{display:flex;flex-direction:column;overflow:hidden}
-.tab-bar{flex:none;border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:2px;background:var(--surface)}
-.tab-btn{padding:12px 14px;border:none;background:none;color:var(--text-muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:color .15s}
-.tab-btn:hover{color:var(--text)}
-.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
-.tab-count{font-size:11px;padding:1px 6px;border-radius:99px;background:var(--surface-raised);color:var(--text-muted)}
-.tab-btn.active .tab-count{background:var(--primary-muted);color:var(--primary)}
-.tab-panels{flex:1;overflow:hidden;position:relative}
-.tab-panel{position:absolute;inset:0;overflow-y:auto;padding:16px;display:none}
-.tab-panel.active{display:block}
-/* KPI CARDS */
-.kpi-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
-.kpi-num{font-size:26px;font-weight:800;line-height:1.1;color:var(--text)}
-.kpi-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-top:4px}
-/* CONTENT CARDS */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
-.card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
-.card-title{font-size:13px;font-weight:600;color:var(--text)}
-.card-body{padding:14px 16px;min-width:0;overflow-wrap:anywhere}
-/* BARS */
-.bar-row{display:grid;grid-template-columns:minmax(80px,160px) 1fr 60px;gap:10px;align-items:center;padding:4px 0}
-.bar-label{font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)}
-.bar-track{height:6px;border-radius:99px;background:var(--bg);overflow:hidden}
-.bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary),var(--blue));min-width:4px}
-.bar-fill.err{background:linear-gradient(90deg,var(--red),var(--yellow))}
-.bar-val{font-size:12px;font-weight:600;text-align:right;color:var(--text-muted)}
-/* OVERVIEW GRID */
-.overview-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px}
-.insight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
-.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
-.insight-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted)}
-.insight-value{font-size:20px;font-weight:800;margin-top:3px}
-.spark{height:38px;display:flex;align-items:end;gap:2px;margin-top:8px}
-.spark-bar{flex:1;min-width:3px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--primary),var(--blue));opacity:.85}
-.spark-bar.err{background:linear-gradient(180deg,var(--red),var(--yellow))}
-.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px}
-th.sortable{cursor:pointer;user-select:none}
-th.sortable:hover{color:var(--text)}
-/* REQUESTS SPLIT */
-.requests-split{display:grid;grid-template-columns:260px minmax(0,1fr);gap:12px;height:100%}
-.trace-list{height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
-.trace-item{width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;color:var(--text);transition:border-color .1s}
-.trace-item:hover{border-color:var(--primary)}
-.trace-item.active{border-color:var(--primary);background:var(--primary-muted)}
-.trace-status{width:8px;height:8px;border-radius:50%;flex:none;margin-top:1px}
-.trace-status.ok{background:var(--green)}
-.trace-status.err{background:var(--red)}
-.trace-header{display:flex;align-items:flex-start;gap:8px;margin-bottom:3px}
-.trace-info{min-width:0;flex:1}
-.trace-code{font-size:12px;font-weight:700}
-.trace-route{font-size:12px;font-weight:500;color:var(--text-muted);overflow-wrap:anywhere;word-break:break-word}
-.trace-meta{font-size:11px;color:var(--text-subtle)}
-.trace-ms{font-size:12px;font-weight:600;flex:none}
-.requests-detail{overflow-y:auto}
-.empty-state{border:1px dashed var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text-muted)}
-/* LOGS */
-.log-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.log-toolbar .search-wrap{flex:1;min-width:200px}
-.log-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s}
-.log-item:hover{border-color:var(--primary)}
-.log-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.log-body{font-size:13px;margin-bottom:4px;overflow-wrap:anywhere}
-.log-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.level-badge{font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:4px}
-.level-ERROR,.level-CRITICAL{background:var(--red-muted);color:var(--red)}
-.level-WARNING{background:var(--yellow-muted);color:var(--yellow)}
-.level-INFO{background:var(--blue-muted);color:var(--blue)}
-.level-DEBUG{background:var(--surface-raised);color:var(--text-muted)}
-/* ERRORS */
-.error-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s;text-align:left;width:100%}
-.error-item:hover{border-color:var(--red)}
-.error-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.error-type{font-size:13px;font-weight:600;color:var(--text)}
-.error-msg{font-size:13px;color:var(--text-muted);margin-bottom:4px}
-.error-meta{font-size:11px;color:var(--text-subtle)}
-/* DEPENDENCIES */
-.dep-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;margin-bottom:6px;transition:border-color .1s;min-width:0;overflow-wrap:anywhere}
-.dep-card:hover{border-color:var(--green)}
-.dep-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;min-width:0}
-.dep-name{font-size:13px;font-weight:600;overflow-wrap:anywhere;min-width:0}
-.dep-sql{font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted);margin-top:4px;white-space:normal;overflow-wrap:anywhere}
-.dep-error{font-size:11px;color:var(--red);margin-top:2px}
-/* PILL / BADGE */
-.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid var(--border);border-radius:99px;font-size:11px;color:var(--text-muted)}
-.svc-badge{display:inline-flex;align-items:center;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;background:var(--primary-muted);color:var(--primary);border:1px solid rgba(59,130,246,.25);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
-/* DRAWER */
-#drawerOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39;display:none}
-#drawerOverlay.open{display:block}
-.drawer{position:fixed;right:0;top:0;bottom:0;width:min(1240px,98vw);background:var(--bg);border-left:1px solid var(--border);box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;z-index:40;display:flex;flex-direction:column}
-.drawer.open{transform:translateX(0)}
-.drawer.fullscreen{left:0;width:100vw;border-left:none}
-.drawer-top{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex:none}
-.drawer-title-wrap{min-width:0;flex:1}
-.drawer-title{font-size:16px;font-weight:700;overflow-wrap:anywhere}
-.drawer-sub{font-size:12px;color:var(--text-muted);margin-top:2px;overflow-wrap:anywhere}
-.drawer-actions{display:flex;gap:8px;flex:none}
-.drawer-body{padding:18px;overflow-y:auto;flex:1}
-/* MISC */
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.small{font-size:12px;color:var(--text-muted)}
-.copy-ok{color:var(--green)}
-pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;background:var(--bg-subtle);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:360px;overflow:auto;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.responsive-table{width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);margin-bottom:12px}
-.responsive-table table{min-width:900px;border:0}
-.responsive-table th,.responsive-table td{vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
-.responsive-table .col-kind{width:150px;min-width:150px}
-.responsive-table .col-target{width:260px;min-width:260px}
-.responsive-table .col-ms{width:72px;min-width:72px;text-align:right}
-.pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px;color:var(--text-muted);font-size:12px}
-.pager .btn{font-size:12px;padding:4px 8px}
-.trace-toggle-panel.hidden-panel{display:none}
-.explain{padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);color:var(--text-muted);font-size:13px;margin-bottom:12px}
-.tabs-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.mapCanvas{min-height:320px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:10px;padding:16px;overflow:auto;margin-bottom:12px}
-.nodeRow{display:flex;align-items:center;gap:10px;margin:10px 0}
-.node{min-width:160px;max-width:520px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px;overflow-wrap:anywhere;word-break:break-word}
-.node.route{border-color:var(--primary)}
-.node.dep{border-color:var(--green)}
-.node.errorNode{border-color:var(--red)}
-.arrow-line{width:40px;height:2px;background:linear-gradient(90deg,var(--primary),transparent);position:relative;flex:none}
-.arrow-line:after{content:"";position:absolute;right:0;top:-4px;border-left:7px solid var(--primary);border-top:5px solid transparent;border-bottom:5px solid transparent}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{padding:8px 10px;border:1px solid var(--border);text-align:left}
-th{background:var(--surface-raised);font-weight:600;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
-.login-overlay{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(10,14,20,.96);backdrop-filter:blur(6px)}
-.login-box{width:min(400px,90vw);background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;box-shadow:var(--shadow)}
-.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}
-.login-form{display:flex;flex-direction:column;gap:10px}
-.form-input{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font:inherit;font-size:13px;color:var(--text)}
-.form-input:focus{outline:none;border-color:var(--primary)}
-.form-input::placeholder{color:var(--text-subtle)}
-.hint{font-size:12px;color:var(--text-muted)}
-.livePulse{animation:pulse 1.8s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.hidden{display:none!important}
-@media(max-width:900px){.overview-grid{grid-template-columns:1fr}.kpi-row{grid-template-columns:repeat(2,1fr)}#dashboardShell{grid-template-columns:1fr}}
-</style></head>
-<body>
-<div id="app-shell">
+/* ─────────────────────────  TOKENS  ───────────────────────── */
+[data-theme="dark"]{
+  --bg:#0a0b0d; --bg-2:#0e1014; --panel:#11141a; --panel-2:#161a22;
+  --ink:#e6ebf2; --muted:#7c8898; --dim:#4a5462; --faint:#2a3140;
+  --rule:#1c2230; --rule-2:#252d3d;
+  --signal:#a3e635; --signal-2:#84cc16; --signal-soft:rgba(163,230,53,.12);
+  --good:#4ade80; --warn:#fbbf24; --bad:#f87171; --info:#60a5fa;
+  --good-soft:rgba(74,222,128,.12); --warn-soft:rgba(251,191,36,.12); --bad-soft:rgba(248,113,113,.12); --info-soft:rgba(96,165,250,.12);
+}
+[data-theme="light"]{
+  --bg:#f6f7f5; --bg-2:#eef0ec; --panel:#ffffff; --panel-2:#fafbf8;
+  --ink:#121417; --muted:#5b6470; --dim:#8a93a0; --faint:#c5cbd4;
+  --rule:#e2e6e0; --rule-2:#d2d7cf;
+  --signal:#4d7c0f; --signal-2:#65a30d; --signal-soft:rgba(101,163,13,.12);
+  --good:#16a34a; --warn:#b45309; --bad:#b91c1c; --info:#1d4ed8;
+  --good-soft:rgba(22,163,74,.10); --warn-soft:rgba(180,83,9,.10); --bad-soft:rgba(185,28,28,.10); --info-soft:rgba(29,78,216,.10);
+}
+:root{
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Inter",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --rail-w:56px;
+  --rail-w-expanded:188px;
+  --top-h:48px;
+  --sub-h:38px;
+}
 
-<!-- LOGIN OVERLAY -->
+/* ─────────────────────────  RESET  ───────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--ink)}
+body{font-family:var(--mono);font-size:12.5px;line-height:1.5;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum","ss01";cursor:default}
+body.loading,body.loading *{cursor:wait!important}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--signal);color:#0a0b0d}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--rule-2);border-radius:0}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+
+/* ─────────────────────────  SHELL  ───────────────────────── */
+#shell{height:100vh;display:grid;grid-template-rows:var(--top-h) var(--sub-h) 1fr;grid-template-columns:var(--rail-w) 1fr;grid-template-areas:"top top" "sub sub" "rail main";transition:grid-template-columns .18s ease}
+#shell.rail-expanded{grid-template-columns:var(--rail-w-expanded) 1fr}
+#shell.no-project{grid-template-rows:var(--top-h) 1fr;grid-template-columns:1fr;grid-template-areas:"top" "main"}
+.topbar{grid-area:top;display:flex;align-items:center;gap:0;height:var(--top-h);background:var(--bg);border-bottom:1px solid var(--rule);position:relative;z-index:30}
+.subbar{grid-area:sub;height:var(--sub-h);background:var(--bg-2);border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:0;padding:0 14px;position:relative;z-index:25}
+.rail{grid-area:rail;background:var(--bg);border-right:1px solid var(--rule);display:flex;flex-direction:column;align-items:stretch}
+.main{grid-area:main;overflow:hidden;background:var(--bg);display:flex;flex-direction:column;min-width:0}
+
+/* ─────────────────────────  TOPBAR  ───────────────────────── */
+.brand{display:flex;align-items:center;gap:10px;padding:0 16px;height:100%;border-right:1px solid var(--rule);min-width:var(--rail-w);justify-content:center;cursor:pointer;transition:background .1s,color .1s}
+.brand:hover .brand-name{color:var(--signal)}
+.brand:hover .brand-mark{filter:brightness(1.15)}
+.brand-mark{width:20px;height:20px;color:var(--signal);flex:none}
+.brand-name{font-family:var(--sans);font-size:13px;font-weight:700;letter-spacing:.01em;display:none}
+@media(min-width:900px){.brand{padding:0 18px;justify-content:flex-start;min-width:auto}.brand-name{display:inline}}
+.crumbs{display:flex;align-items:center;gap:0;height:100%;flex:1;min-width:0;overflow:hidden}
+.crumb{height:100%;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);border-right:1px solid var(--rule);cursor:pointer;transition:background .1s,color .1s;white-space:nowrap;letter-spacing:.02em;text-transform:uppercase;flex:none}
+.crumb:hover{color:var(--ink);background:var(--panel)}
+.crumb .key{color:var(--dim);font-weight:500}
+.crumb .val{color:var(--ink);font-weight:600}
+.crumb .chev{color:var(--dim);font-size:10px;margin-left:6px}
+.crumb-disabled{color:var(--dim);cursor:default}
+.crumb-disabled:hover{background:transparent;color:var(--dim)}
+.top-spacer{flex:1}
+.top-actions{display:flex;align-items:center;gap:0;height:100%}
+.top-actions .item{height:100%;padding:0 12px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);border-left:1px solid var(--rule);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.top-actions button.item{transition:color .1s,background .1s}
+.top-actions button.item:hover{color:var(--ink);background:var(--panel)}
+.live-dot{width:7px;height:7px;background:var(--signal);border-radius:50%;flex:none;box-shadow:0 0 0 0 var(--signal)}
+.live-dot.pulsing{animation:pulse 1.8s ease-in-out infinite}
+.live-dot.paused{background:var(--dim);animation:none}
+.live-dot.error{background:var(--bad);animation:none}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(163,230,53,.6)}50%{box-shadow:0 0 0 5px rgba(163,230,53,0)}}
+.user-chip{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.user-chip .who{color:var(--ink);font-weight:600}
+.env-badge{font-size:10px;font-weight:700;padding:2px 7px;border:1px solid var(--rule-2);color:var(--signal);background:var(--signal-soft);letter-spacing:.06em}
+
+/* ─────────────────────────  SUBBAR (filters)  ───────────────────────── */
+.sb-group{display:flex;align-items:center;gap:8px;height:100%;padding-right:14px;border-right:1px solid var(--rule);margin-right:14px}
+.sb-group:last-of-type{border-right:0}
+.sb-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);font-weight:600}
+.sb-select{appearance:none;-webkit-appearance:none;background:var(--panel);border:1px solid var(--rule-2);color:var(--ink);padding:4px 22px 4px 8px;font-size:11.5px;border-radius:0;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 12px) 50%,calc(100% - 8px) 50%;background-size:4px 4px,4px 4px;background-repeat:no-repeat;transition:border-color .1s}
+.sb-select:hover{border-color:var(--signal)}
+.sb-select:focus{outline:none;border-color:var(--signal)}
+.sb-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:11px;color:var(--muted);border:1px solid var(--rule-2);background:var(--panel);text-transform:uppercase;letter-spacing:.06em;font-weight:600;transition:all .1s}
+.sb-pill:hover{color:var(--ink);border-color:var(--signal)}
+.sb-pill.active{color:var(--signal);border-color:var(--signal);background:var(--signal-soft)}
+.sb-input{background:var(--panel);border:1px solid var(--rule-2);color:var(--ink);padding:4px 8px;font-size:11.5px;border-radius:0;min-width:200px;transition:border-color .1s}
+.sb-input:focus{outline:none;border-color:var(--signal)}
+.sb-input::placeholder{color:var(--dim)}
+
+/* ─────────────────────────  RAIL (left nav)  ───────────────────────── */
+.rail-btn{height:48px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-left:2px solid transparent;border-bottom:1px solid var(--rule);transition:color .1s,background .1s,border-color .1s,padding .18s ease,gap .18s ease;position:relative}
+.rail-btn:hover{color:var(--ink);background:var(--panel)}
+.rail-btn.active{color:var(--signal);border-left-color:var(--signal);background:var(--signal-soft)}
+.rail-btn svg{width:16px;height:16px;stroke-width:1.8;flex:none}
+.rail-btn .badge{position:absolute;top:8px;right:8px;background:var(--bad);color:#fff;font-size:9px;font-weight:700;padding:1px 4px;min-width:14px;text-align:center;border-radius:0}
+.rail-btn .tip{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);background:var(--panel);border:1px solid var(--rule-2);padding:5px 9px;font-size:11px;color:var(--ink);white-space:nowrap;text-transform:uppercase;letter-spacing:.06em;opacity:0;pointer-events:none;transition:opacity .12s;z-index:50}
+.rail-btn:hover .tip{opacity:1}
+.rail.expanded .rail-btn{justify-content:flex-start;padding:0 16px;gap:14px}
+.rail.expanded .rail-btn .tip{position:static;background:none;border:0;padding:0;opacity:1;pointer-events:auto;transform:none;color:inherit;font-size:11px;letter-spacing:.08em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail.expanded .rail-btn .badge{top:50%;right:14px;transform:translateY(-50%)}
+.rail-spacer{flex:1}
+#shell.rail-expanded .brand{min-width:var(--rail-w-expanded);justify-content:flex-start;padding:0 18px}
+
+/* ─────────────────────────  PAGE  ───────────────────────── */
+.page{height:100%;overflow-y:auto;overflow-x:hidden;padding:0;display:flex;flex-direction:column}
+.page-header{padding:18px 24px 14px;display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex:none}
+.page-title{font-family:var(--sans);font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.page-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.page-actions{display:flex;gap:8px;align-items:center}
+.page-body{padding:0 24px 24px;flex:1;min-height:0}
+
+/* ─────────────────────────  PANEL / RULE  ───────────────────────── */
+.panel{background:var(--panel);border:1px solid var(--rule);margin-bottom:14px}
+.panel-head{padding:8px 14px;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg-2)}
+.panel-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700}
+.panel-meta{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+.panel-body{padding:14px}
+.panel-body.no-pad{padding:0}
+.hr{height:1px;background:var(--rule);margin:14px 0}
+
+/* ─────────────────────────  VITAL STRIP  ───────────────────────── */
+.vitals{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:1px solid var(--rule);background:var(--panel);margin-bottom:14px}
+@media(max-width:1100px){.vitals{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.vitals{grid-template-columns:repeat(2,1fr)}}
+.vital{padding:14px 16px;border-right:1px solid var(--rule);position:relative;display:flex;flex-direction:column;gap:4px;min-width:0}
+.vital:last-child{border-right:0}
+.vital .v-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.16em;color:var(--dim);font-weight:600}
+.vital .v-num{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink);line-height:1.1;letter-spacing:-.01em}
+.vital .v-sub{font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.vital .v-spark{height:18px;margin-top:4px;display:flex;align-items:flex-end;gap:1px}
+.vital .v-spark span{flex:1;min-width:2px;background:var(--signal);opacity:.55;min-height:2px;transition:opacity .1s}
+.vital .v-spark.err span{background:var(--bad)}
+.vital .v-spark.warn span{background:var(--warn)}
+.vital.alert .v-num{color:var(--bad)}
+.vital.warn .v-num{color:var(--warn)}
+.delta-up{color:var(--good)}
+.delta-down{color:var(--bad)}
+.delta-flat{color:var(--dim)}
+
+/* ─────────────────────────  STATUS CHIP  ───────────────────────── */
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--rule-2);background:var(--bg-2);color:var(--muted)}
+.chip.good{color:var(--good);border-color:var(--good);background:var(--good-soft)}
+.chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+.chip.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-soft)}
+.chip.info{color:var(--info);border-color:var(--info);background:var(--info-soft)}
+.chip.signal{color:var(--signal);border-color:var(--signal);background:var(--signal-soft)}
+.chip.dim{color:var(--dim);border-color:var(--rule-2)}
+
+.method{display:inline-flex;align-items:center;padding:1px 6px;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid currentColor;flex:none}
+.method-GET{color:var(--good)}
+.method-POST{color:var(--info)}
+.method-PUT,.method-PATCH{color:var(--warn)}
+.method-DELETE{color:var(--bad)}
+.method-OTHER{color:var(--signal)}
+
+/* ─────────────────────────  TABLE  ───────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.tbl thead th{position:sticky;top:0;background:var(--bg-2);text-align:left;padding:7px 12px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600;border-bottom:1px solid var(--rule);user-select:none;cursor:default;white-space:nowrap}
+.tbl thead th.sortable{cursor:pointer;transition:color .1s}
+.tbl thead th.sortable:hover{color:var(--ink)}
+.tbl thead th.sortable .arr{display:inline-block;width:8px;margin-left:4px;color:var(--signal)}
+.tbl tbody td{padding:8px 12px;border-bottom:1px solid var(--rule);color:var(--ink);vertical-align:middle;max-width:0}
+.tbl tbody tr{transition:background .08s}
+.tbl tbody tr:hover{background:var(--bg-2)}
+.tbl tbody tr.row-clickable{cursor:pointer}
+.tbl tbody tr.row-clickable:hover{background:var(--signal-soft)}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl td.dim{color:var(--muted)}
+.tbl td.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+.tbl td .sub{font-size:10.5px;color:var(--dim);margin-top:2px}
+
+.pager{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-top:1px solid var(--rule);background:var(--bg-2);font-size:11px;color:var(--muted)}
+.pager .left,.pager .right{display:flex;align-items:center;gap:8px}
+.pager button{padding:3px 8px;border:1px solid var(--rule-2);color:var(--muted);transition:all .1s;background:var(--panel);text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+.pager button:hover:not(:disabled){color:var(--ink);border-color:var(--signal)}
+.pager button:disabled{opacity:.35;cursor:not-allowed}
+
+/* ─────────────────────────  ATTENTION / STREAM  ───────────────────────── */
+.stream{display:flex;flex-direction:column}
+.stream-row{display:grid;grid-template-columns:80px 50px 1fr auto;gap:14px;padding:9px 14px;border-bottom:1px solid var(--rule);align-items:center;cursor:pointer;transition:background .08s;font-size:12px}
+.stream-row:hover{background:var(--bg-2)}
+.stream-row:last-child{border-bottom:0}
+.stream-row .when{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+.stream-row .what{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stream-row .meta{color:var(--muted);font-size:11px;text-align:right;white-space:nowrap}
+
+/* ─────────────────────────  TRACE WATERFALL  ───────────────────────── */
+.split{display:grid;gap:0;height:100%;min-height:0}
+.split.t-list{grid-template-columns:minmax(360px,420px) 1fr;border-top:1px solid var(--rule)}
+.split.t-list .col{overflow:hidden;display:flex;flex-direction:column;min-height:0;min-width:0}
+.split.t-list .col:first-child{border-right:1px solid var(--rule)}
+.split.t-list-3col{grid-template-columns:minmax(220px,260px) minmax(320px,380px) 1fr;border-top:1px solid var(--rule);transition:grid-template-columns .18s ease}
+.split.t-list-3col.r-collapsed{grid-template-columns:34px minmax(320px,380px) 1fr}
+.split.t-list-3col.c-collapsed{grid-template-columns:minmax(220px,260px) 34px 1fr}
+.split.t-list-3col.r-collapsed.c-collapsed{grid-template-columns:34px 34px 1fr}
+.split.t-list-3col .col{overflow:hidden;display:flex;flex-direction:column;min-height:0;min-width:0}
+.split.t-list-3col .col:nth-child(1),
+.split.t-list-3col .col:nth-child(2){border-right:1px solid var(--rule)}
+
+.trace-row{display:grid;grid-template-columns:42px 1fr 60px;gap:10px;padding:10px 12px;border-bottom:1px solid var(--rule);align-items:center;cursor:pointer;transition:background .08s}
+.trace-row:hover{background:var(--bg-2)}
+.trace-row.active{background:var(--signal-soft);border-left:2px solid var(--signal);padding-left:10px}
+.trace-row .status{font-size:11px;font-weight:700;text-align:center}
+.trace-row .status.ok{color:var(--good)}
+.trace-row .status.err{color:var(--bad)}
+.trace-row .route{font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trace-row .route .method{margin-right:6px}
+.trace-row .meta{font-size:10.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trace-row .dur{font-size:12px;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+
+/* trace-page sidebars (routes + calls) */
+.t-sidebar{background:var(--bg)}
+.t-side-head{padding:8px 10px;border-bottom:1px solid var(--rule);flex:none;background:var(--bg-2);display:flex;align-items:center;gap:6px}
+.t-side-head .t-side-search{flex:1;min-width:0}
+.t-collapse-btn{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px solid var(--rule-2);background:var(--panel);transition:all .1s;font-size:13px;line-height:1;font-family:var(--mono)}
+.t-collapse-btn:hover{color:var(--signal);border-color:var(--signal)}
+.t-collapsed-rail{display:flex;flex-direction:column;align-items:center;padding:8px 0;cursor:pointer;height:100%;background:var(--bg-2);transition:background .1s;gap:10px}
+.t-collapsed-rail:hover{background:var(--panel)}
+.t-collapsed-rail:hover .t-collapsed-ico,
+.t-collapsed-rail:hover .t-collapsed-label{color:var(--signal)}
+.t-collapsed-ico{color:var(--muted);font-size:13px;font-family:var(--mono);transition:color .1s;line-height:1}
+.t-collapsed-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--dim);font-weight:600;transition:color .1s;white-space:nowrap}
+.t-collapsed-count{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:auto;padding-bottom:6px}
+.t-side-search{width:100%;background:var(--panel);border:1px solid var(--rule-2);color:var(--ink);padding:5px 8px;font-size:11.5px;font-family:var(--mono);border-radius:0;transition:border-color .1s}
+.t-side-search:focus{outline:none;border-color:var(--signal)}
+.t-side-search::placeholder{color:var(--dim)}
+.t-side-search:disabled{opacity:.45;cursor:not-allowed}
+.t-side-list{flex:1;min-height:0;overflow-y:auto}
+.t-side-row{padding:8px 12px;border-bottom:1px solid var(--rule);cursor:pointer;transition:background .08s;display:flex;flex-direction:column;gap:3px;border-left:2px solid transparent}
+.t-side-row:hover{background:var(--bg-2)}
+.t-side-row.active{background:var(--signal-soft);border-left-color:var(--signal)}
+.t-side-row-line{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink);min-width:0}
+.t-side-row-line .truncate{flex:1;min-width:0}
+.t-side-row-meta{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;gap:8px}
+.t-side-pager{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-top:1px solid var(--rule);background:var(--bg-2);font-size:10.5px;color:var(--muted);flex:none;gap:8px}
+.t-pager-btn{padding:2px 9px;border:1px solid var(--rule-2);color:var(--muted);background:var(--panel);font-size:13px;line-height:1;transition:all .1s;font-family:var(--mono)}
+.t-pager-btn:hover:not(:disabled){color:var(--signal);border-color:var(--signal)}
+.t-pager-btn:disabled{opacity:.35;cursor:not-allowed}
+.t-pager-info{font-variant-numeric:tabular-nums;text-align:center;flex:1;text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+
+.waterfall{padding:14px;overflow-y:auto;height:100%}
+.wf-head{display:grid;grid-template-columns:1fr;gap:6px;padding-bottom:12px;border-bottom:1px solid var(--rule);margin-bottom:12px}
+.wf-title{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:10px}
+.wf-meta{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--muted)}
+.wf-meta .kv{display:flex;align-items:center;gap:6px}
+.wf-meta .kv .k{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+.wf-meta .kv .v{color:var(--ink);font-variant-numeric:tabular-nums}
+.wf-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.wf-tabs{display:flex;gap:0;border-bottom:1px solid var(--rule);margin-bottom:12px}
+.wf-tab{padding:6px 12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .1s,border-color .1s}
+.wf-tab:hover{color:var(--ink)}
+.wf-tab.active{color:var(--signal);border-bottom-color:var(--signal)}
+
+.wf-bars{display:flex;flex-direction:column;gap:1px}
+.wf-bar{display:grid;grid-template-columns:200px 1fr 60px;gap:10px;padding:5px 0;align-items:center;font-size:11px;border-bottom:1px solid var(--rule)}
+.wf-bar:hover{background:var(--bg-2)}
+.wf-bar .name{display:flex;align-items:center;gap:6px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-bar .name .kind{font-size:9px;padding:1px 4px;border:1px solid currentColor;letter-spacing:.06em;text-transform:uppercase;flex:none}
+.wf-bar .name .kind.http{color:var(--info)}
+.wf-bar .name .kind.db{color:var(--good)}
+.wf-bar .name .kind.llm{color:var(--signal)}
+.wf-bar .name .kind.queue{color:var(--warn)}
+.wf-bar .name .kind.error{color:var(--bad)}
+.wf-bar .name .kind.span{color:var(--muted)}
+.wf-bar .track{position:relative;background:var(--bg-2);height:14px;border:1px solid var(--rule)}
+.wf-bar .fill{position:absolute;top:0;bottom:0;background:var(--signal);min-width:2px}
+.wf-bar .fill.http{background:var(--info)}
+.wf-bar .fill.db{background:var(--good)}
+.wf-bar .fill.llm{background:var(--signal-2)}
+.wf-bar .fill.error{background:var(--bad)}
+.wf-bar .dur{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* time axis ticks */
+.wf-axis{display:grid;grid-template-columns:200px 1fr 60px;gap:10px;font-size:9.5px;color:var(--dim);padding:0 0 4px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+.wf-axis .ticks{position:relative;height:14px}
+.wf-axis .ticks span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+
+/* ─────────────────────────  LOGS  ───────────────────────── */
+.log-row{display:grid;grid-template-columns:130px 60px 130px 1fr;gap:14px;padding:7px 14px;border-bottom:1px solid var(--rule);align-items:start;font-size:11.5px;cursor:pointer;transition:background .08s}
+.log-row:hover{background:var(--bg-2)}
+.log-row .ts{color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.log-row .lvl{font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;text-align:left}
+.log-row .lvl.INFO{color:var(--info)}
+.log-row .lvl.WARNING,.log-row .lvl.WARN{color:var(--warn)}
+.log-row .lvl.ERROR,.log-row .lvl.CRITICAL{color:var(--bad)}
+.log-row .lvl.DEBUG{color:var(--dim)}
+.log-row .svc{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-row .msg{color:var(--ink);overflow:hidden;word-break:break-word}
+.log-row .msg .lname{color:var(--dim);font-size:10.5px;margin-top:2px}
+
+/* ─────────────────────────  EMPTY / LOADING  ───────────────────────── */
+.empty{padding:40px 24px;text-align:center;color:var(--muted);border:1px dashed var(--rule-2);background:var(--bg-2)}
+.empty .ico{font-size:22px;color:var(--dim);margin-bottom:8px;font-weight:700;letter-spacing:.2em}
+.empty p{font-size:12px;line-height:1.6;max-width:42ch;margin:0 auto 12px}
+.empty .hint{font-size:11px;color:var(--dim)}
+
+.spinner{display:inline-block;width:10px;height:10px;border:1.5px solid var(--dim);border-top-color:var(--signal);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─────────────────────────  BUTTONS  ───────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:11px;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--rule-2);text-transform:uppercase;letter-spacing:.06em;transition:all .1s}
+.btn:hover:not(:disabled){color:var(--ink);border-color:var(--signal)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{color:#0a0b0d;background:var(--signal);border-color:var(--signal)}
+.btn-primary:hover:not(:disabled){background:var(--signal-2);border-color:var(--signal-2);color:#0a0b0d}
+.btn-danger{color:var(--bad);border-color:var(--bad)}
+.btn-danger:hover{background:var(--bad-soft);color:var(--bad)}
+.btn-sm{padding:3px 7px;font-size:10px}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;color:var(--muted);background:transparent;border:1px solid var(--rule-2);transition:all .1s}
+.icon-btn:hover{color:var(--signal);border-color:var(--signal)}
+.icon-btn svg{width:13px;height:13px;stroke-width:1.8}
+
+/* ─────────────────────────  CHARTS  ───────────────────────── */
+.timeline{background:var(--panel);border:1px solid var(--rule);padding:14px}
+.timeline-svg{width:100%;height:120px;display:block}
+.timeline-svg .grid{stroke:var(--rule);stroke-width:.5}
+.timeline-svg .axis{stroke:var(--rule-2);stroke-width:.5}
+.timeline-svg .axis-text{fill:var(--dim);font-size:9px;font-family:var(--mono)}
+.timeline-svg .area-req{fill:var(--signal);fill-opacity:.18}
+.timeline-svg .line-req{fill:none;stroke:var(--signal);stroke-width:1.4}
+.timeline-svg .area-err{fill:var(--bad);fill-opacity:.25}
+.timeline-svg .line-err{fill:none;stroke:var(--bad);stroke-width:1.4}
+.timeline-legend{display:flex;gap:18px;margin-top:8px;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.timeline-legend .sw{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+
+/* ─────────────────────────  DRAWER (for AI-copy + key creation only)  ───────────────────────── */
+.drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:90;display:none}
+.drawer-overlay.open{display:block}
+.drawer{position:fixed;right:0;top:0;bottom:0;width:min(720px,95vw);background:var(--bg);border-left:1px solid var(--rule-2);transform:translateX(105%);transition:transform .22s cubic-bezier(.2,.7,.2,1);z-index:91;display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--rule);flex:none}
+.drawer-title{font-family:var(--sans);font-size:14px;font-weight:600;color:var(--ink)}
+.drawer-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.drawer-body{padding:14px 18px;overflow-y:auto;flex:1}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--bg-2);border:1px solid var(--rule);padding:10px;font-size:11.5px;font-family:var(--mono);max-height:50vh;overflow:auto;color:var(--ink)}
+
+/* ─────────────────────────  LOGIN  ───────────────────────── */
+.login-overlay{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(10,11,13,.96);backdrop-filter:blur(8px)}
+.login-box{width:min(380px,90vw);background:var(--panel);border:1px solid var(--rule-2);padding:28px}
+.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-brand svg{color:var(--signal)}
+.login-brand .name{font-family:var(--sans);font-size:14px;font-weight:700}
+.login-title{font-family:var(--sans);font-size:20px;font-weight:700;color:var(--ink);margin:18px 0 4px}
+.login-hint{font-size:11.5px;color:var(--muted);margin-bottom:20px}
+.login-form{display:flex;flex-direction:column;gap:10px}
+.form-input{background:var(--bg-2);border:1px solid var(--rule-2);padding:9px 12px;font-size:12.5px;color:var(--ink);font-family:var(--mono);transition:border-color .1s}
+.form-input:focus{outline:none;border-color:var(--signal)}
+.form-input::placeholder{color:var(--dim)}
+.login-err{font-size:11.5px;color:var(--bad);min-height:16px}
+
+/* ─────────────────────────  PROJECT SCREEN  ───────────────────────── */
+.proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:14px}
+.proj-card{background:var(--panel);border:1px solid var(--rule);padding:18px;cursor:pointer;transition:border-color .1s,background .1s}
+.proj-card:hover{border-color:var(--signal);background:var(--panel-2)}
+.proj-card .proj-name{font-family:var(--sans);font-size:15px;font-weight:700;color:var(--ink);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.proj-card .proj-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:10px 0}
+.proj-card .ps{display:flex;flex-direction:column;gap:2px}
+.proj-card .ps .num{font-size:18px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.proj-card .ps .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim)}
+.proj-card .proj-meta{font-size:10.5px;color:var(--muted);margin-bottom:10px;display:flex;flex-direction:column;gap:2px}
+.proj-card .proj-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--rule)}
+
+/* ─────────────────────────  ROUTE LIST PILLS (inside Routes/Traces)  ───────────────────────── */
+.filter-row{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;padding:0 14px 12px;margin-top:-2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;max-height:46px;flex:none}
+.filter-row::-webkit-scrollbar{height:6px}
+.filter-row.wrap{flex-wrap:wrap;max-height:none;overflow:visible}
+.filter-row .sb-pill{flex:none}
+
+/* ─────────────────────────  UTILITY  ───────────────────────── */
+.hidden{display:none!important}
+.mono{font-family:var(--mono)}
+.sans{font-family:var(--sans)}
+.tnum{font-variant-numeric:tabular-nums}
+.txt-dim{color:var(--dim)}
+.txt-muted{color:var(--muted)}
+.txt-bad{color:var(--bad)}
+.txt-good{color:var(--good)}
+.txt-warn{color:var(--warn)}
+.txt-signal{color:var(--signal)}
+.flex{display:flex}
+.flex-1{flex:1}
+.gap-1{gap:4px}
+.gap-2{gap:8px}
+.gap-3{gap:12px}
+.gap-4{gap:16px}
+.align-c{align-items:center}
+.mt-1{margin-top:4px}
+.mt-2{margin-top:8px}
+.mt-3{margin-top:12px}
+.mb-2{margin-bottom:8px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.nowrap{white-space:nowrap}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kbd{display:inline-block;padding:1px 5px;font-size:10px;font-family:var(--mono);border:1px solid var(--rule-2);background:var(--bg-2);color:var(--muted);border-radius:0}
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────  LOGIN OVERLAY  ───────────────────── -->
 <div id="loginOverlay" class="login-overlay">
   <section class="login-box">
     <div class="login-brand">
-      <div class="brand-icon" style="width:38px;height:38px;border-radius:10px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
-      <div><div style="font-size:16px;font-weight:700">Runtime Observer</div><div class="hint">Sign in to continue</div></div>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+      <span class="name">RUNTIME · OBSERVER</span>
     </div>
+    <h1 class="login-title">Sign in</h1>
+    <p class="login-hint">Use any username/password — admin is bootstrapped on first login.</p>
     <form id="loginForm" class="login-form">
-      <input id="loginUsername" class="form-input" autocomplete="username" placeholder="Username" required>
-      <input id="loginPassword" class="form-input" type="password" autocomplete="current-password" placeholder="Password" required>
-      <button class="btn btn-primary" type="submit">Sign in / bootstrap admin</button>
-      <div id="loginError" class="small level-ERROR" style="color:var(--red)"></div>
+      <input id="loginUsername" class="form-input" autocomplete="username" placeholder="username" required>
+      <input id="loginPassword" class="form-input" type="password" autocomplete="current-password" placeholder="password" required>
+      <button class="btn btn-primary" type="submit" style="justify-content:center;padding:9px">Sign in</button>
+      <div id="loginError" class="login-err"></div>
     </form>
   </section>
 </div>
 
-<!-- TOPBAR -->
-<div class="topbar">
-  <div class="topbar-brand">
-    <div class="brand-icon">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+<!-- ─────────────────────  SHELL  ───────────────────── -->
+<div id="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <button class="brand" id="brand" title="Back to projects" type="button">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+      <span class="brand-name">RUNTIME OBSERVER</span>
+    </button>
+    <div class="crumbs">
+      <button class="crumb" id="crumbProject"><span class="key">PROJECT</span><span class="val" id="crumbProjectVal">—</span><span class="chev">▾</span></button>
+      <button class="crumb" id="crumbApp"><span class="key">APP</span><span class="val" id="crumbAppVal">all</span><span class="chev">▾</span></button>
+      <span class="crumb crumb-disabled" id="crumbPage"><span class="key">VIEW</span><span class="val" id="crumbPageVal">pulse</span></span>
     </div>
-    <span class="brand-name">Runtime Observer</span>
+    <div class="top-actions">
+      <span class="item"><span id="liveDot" class="live-dot pulsing"></span><span id="liveText">live · 10s</span></span>
+      <button class="item" id="refreshBtn" title="Refresh now"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.5 15A9 9 0 1 1 20.4 6"/></svg>SYNC</button>
+      <button class="item" id="themeBtn" title="Toggle theme"><svg id="iconSun" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg><svg id="iconMoon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg></button>
+      <span class="item user-chip"><span id="userWho" class="who">—</span></span>
+      <button class="item" id="logoutBtn">SIGN OUT</button>
+      <span class="item"><span class="env-badge" id="envBadge">DEV</span></span>
+    </div>
   </div>
-  <div class="topbar-divider"></div>
-  <span id="topbarProject" class="topbar-project">No project selected</span>
-  <div class="topbar-right">
-    <span id="userText" class="hint"></span>
-    <button id="logoutBtn" class="btn" style="font-size:12px;padding:4px 10px">Logout</button>
-    <div class="topbar-divider"></div>
-    <span class="status-dot livePulse" id="liveDot"></span>
-    <span id="liveText" class="live-text">live refresh every 10s</span>
-    <select id="refreshInterval" class="select-sm" title="Refresh interval">
-      <option value="1000">1s</option>
-      <option value="10000" selected>10s</option>
-      <option value="20000">20s</option>
-      <option value="60000">60s</option>
-      <option value="0">Manual</option>
-    </select>
-    <button id="refreshBtn" class="icon-btn" title="Refresh now">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.07-8.97"/></svg>
-    </button>
-    <button id="themeToggle" class="icon-btn" title="Toggle theme">
-      <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-      <svg id="themeIconMoon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" style="display:none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
-    </button>
-    <span class="env-badge" id="envBadge">dev</span>
+
+  <!-- SUB BAR (context filters; visible only inside a project) -->
+  <div class="subbar" id="subbar">
+    <div class="sb-group">
+      <span class="sb-label">WINDOW</span>
+      <select class="sb-select" id="windowSelect">
+        <option value="5">5m</option>
+        <option value="15">15m</option>
+        <option value="60" selected>1h</option>
+        <option value="360">6h</option>
+        <option value="1440">24h</option>
+        <option value="0">all</option>
+      </select>
+    </div>
+    <div class="sb-group">
+      <span class="sb-label">REFRESH</span>
+      <select class="sb-select" id="refreshSelect">
+        <option value="1000">1s</option>
+        <option value="10000" selected>10s</option>
+        <option value="20000">20s</option>
+        <option value="60000">60s</option>
+        <option value="0">manual</option>
+      </select>
+    </div>
+    <div class="sb-group" id="subbarSearchGroup" style="flex:1">
+      <input class="sb-input" id="globalSearch" placeholder="search routes, paths, services...">
+    </div>
+    <div class="sb-group" style="border-right:0;margin-right:0">
+      <button class="sb-pill" id="hiddenToggle" title="Show/hide hidden routes & deps">show hidden</button>
+    </div>
   </div>
+
+  <!-- LEFT RAIL -->
+  <nav class="rail" id="rail">
+    <button class="rail-btn" data-page="pulse" title="Pulse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg><span class="tip">PULSE</span></button>
+    <button class="rail-btn" data-page="traces" title="Traces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="20" cy="12" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg><span class="tip">TRACES</span></button>
+    <button class="rail-btn" data-page="routes" title="Routes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 5h18M3 12h18M3 19h18"/></svg><span class="tip">ROUTES</span></button>
+    <button class="rail-btn" data-page="logs" title="Logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span class="tip">LOGS</span></button>
+    <button class="rail-btn" data-page="errors" title="Errors"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18.5v.5"/></svg><span class="badge hidden" id="railErrBadge">0</span><span class="tip">ERRORS</span></button>
+    <button class="rail-btn" data-page="deps" title="Dependencies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 7.5l4 9M16.5 7.5l-4 9"/></svg><span class="tip">DEPS</span></button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" data-page="settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.7l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.7-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.7.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.7 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.7.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5h0a1.6 1.6 0 0 0 1.7-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.7v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span class="tip">SETTINGS</span></button>
+    <button class="rail-btn" id="railToggle" title="Toggle sidebar"><svg id="railToggleIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 6l-6 6 6 6"/></svg><span class="tip">COLLAPSE</span></button>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main" id="main">
+    <!-- pages render here -->
+  </div>
+
 </div>
 
-<!-- BODY AREA -->
-<div class="body-area">
-
-<!-- PROJECT SCREEN -->
-<div id="projectScreen" style="flex:1;overflow-y:auto;padding:24px">
-  <div class="project-screen-header">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <div>
-        <div class="project-screen-title">Projects</div>
-        <div class="project-screen-sub">Select a project to inspect traces and telemetry</div>
-      </div>
-      <button class="btn btn-primary" onclick="createProjectKey(prompt('Project name','default')||'default')">Create project SDK key</button>
-    </div>
-  </div>
-  <div id="projectCards" class="project-grid"></div>
-</div>
-
-<!-- DASHBOARD SHELL (sidebar + main) -->
-<div id="dashboardShell" class="hidden" style="flex:1;overflow:hidden;display:grid;grid-template-columns:280px minmax(0,1fr)">
-
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <div class="sidebar-apps" id="appTabs"></div>
-    <div class="sidebar-search">
-      <div class="search-wrap">
-        <span class="search-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        </span>
-        <input id="routeSearch" class="search-input" type="search" placeholder="Search routes...">
-      </div>
-    </div>
-    <div class="sidebar-filter">
-      <button id="showHiddenBtn" class="filter-toggle" title="Show hidden routes">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
-        Show hidden
-      </button>
-    </div>
-    <div class="sidebar-routes" id="entrypoints"></div>
-  </div>
-
-  <!-- MAIN CONTENT -->
-  <div class="main-content">
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="overview">Overview</button>
-      <button class="tab-btn" data-tab="requests">Requests <span class="tab-count" id="tabCountRequests">0</span></button>
-      <button class="tab-btn" data-tab="logs">Logs <span class="tab-count" id="tabCountLogs">0</span></button>
-      <button class="tab-btn" data-tab="errors">Errors <span class="tab-count" id="tabCountErrors">0</span></button>
-      <button class="tab-btn" data-tab="dependencies">Dependencies <span class="tab-count" id="tabCountDeps">0</span></button>
-    </div>
-    <div class="tab-panels">
-
-      <!-- OVERVIEW TAB -->
-      <div class="tab-panel active" id="panel-overview">
-        <div id="kpis" class="kpi-row"></div>
-        <div id="insights" class="insight-grid"></div>
-        <div class="overview-grid">
-          <div class="card">
-            <div class="card-header"><span class="card-title">Route Performance</span><span class="pill">p95 latency</span></div>
-            <div class="card-body" id="routes"></div>
-          </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">Activity Summary</span><span class="pill">live</span></div>
-            <div class="card-body">
-              <div id="mix"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- REQUESTS TAB -->
-      <div class="tab-panel" id="panel-requests">
-        <div style="display:grid;grid-template-columns:minmax(360px,420px) minmax(0,1fr);gap:12px;height:100%">
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div class="small" style="padding:2px 0;font-weight:600;color:var(--text-muted)">Traces for selected route</div>
-            <div id="traceList" class="trace-list"></div>
-          </div>
-          <div>
-            <div class="small" style="padding:2px 0 8px;font-weight:600;color:var(--text-muted)">Logs related to selected trace</div>
-            <div id="routeLogs"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- LOGS TAB -->
-      <div class="tab-panel" id="panel-logs">
-        <div class="log-toolbar">
-          <div class="search-wrap" style="flex:1;min-width:200px">
-            <span class="search-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </span>
-            <input id="logSearch" class="search-input" placeholder="Search log message...">
-          </div>
-          <select id="level" class="select-sm" title="Log level">
-            <option value="">All levels</option>
-            <option>ERROR</option>
-            <option>WARNING</option>
-            <option>INFO</option>
-            <option>DEBUG</option>
-          </select>
-          <select id="logWindow" class="select-sm" title="Log window">
-            <option value="5">Last 5m</option>
-            <option value="15">Last 15m</option>
-            <option value="60" selected>Last 1h</option>
-            <option value="360">Last 6h</option>
-            <option value="1440">Last 24h</option>
-            <option value="0">All retained</option>
-          </select>
-          <select id="logSource" class="select-sm" title="Log source">
-            <option value="all">All sources</option>
-            <option value="client">Client console</option>
-            <option value="backend">Backend</option>
-          </select>
-          <button id="searchBtn" class="btn">Search</button>
-        </div>
-        <div id="logs"></div>
-      </div>
-
-      <!-- ERRORS TAB -->
-      <div class="tab-panel" id="panel-errors">
-        <div class="overview-grid">
-          <div class="card"><div class="card-header"><span class="card-title">Error clusters</span><span class="pill">grouped by fingerprint</span></div><div class="card-body" id="errorClusters"></div></div>
-          <div class="card"><div class="card-header"><span class="card-title">Error timeline</span><span class="pill">24h</span></div><div class="card-body"><div id="errorTimeline"></div><div id="errors" style="margin-top:12px"></div></div></div>
-        </div>
-      </div>
-
-      <!-- DEPENDENCIES TAB -->
-      <div class="tab-panel" id="panel-dependencies">
-        <div class="explain">Dependencies are external resources your app interacted with: database queries, outbound HTTP calls, LLM calls, and package inventory. Counts and latency are aggregated per app + target + operation. Click a dependency to inspect recent samples, errors, related logs, and traces.</div>
-        <div id="deps"></div>
-      </div>
-
-    </div>
-  </div>
-</div><!-- /dashboardShell -->
-
-</div><!-- /body-area -->
-</div><!-- /app-shell -->
-
-<!-- DRAWER OVERLAY -->
-<div id="drawerOverlay"></div>
-
-<!-- DRAWER -->
+<!-- ─────────────────────  DRAWER  ───────────────────── -->
+<div id="drawerOverlay" class="drawer-overlay"></div>
 <div id="drawer" class="drawer">
-  <div class="drawer-top">
-    <div class="drawer-title-wrap">
-      <div id="drawerTitle" class="drawer-title">Detail</div>
+  <div class="drawer-head">
+    <div>
+      <div id="drawerTitle" class="drawer-title">—</div>
       <div id="drawerSub" class="drawer-sub"></div>
     </div>
-    <div class="drawer-actions">
-      <button id="drawerFullscreenBtn" class="icon-btn" aria-label="Toggle fullscreen drawer" title="Toggle fullscreen">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-      </button>
-      <button id="closeBtn" class="icon-btn" aria-label="Close drawer">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
+    <button id="drawerClose" class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
   </div>
   <div id="drawerBody" class="drawer-body"></div>
 </div>
 
 <script>
 (function(){
-// ── INIT THEME ──
-var _savedTheme=localStorage.getItem('runtimeObserverTheme');
-if(_savedTheme)document.documentElement.dataset.theme=_savedTheme;
-updateThemeIcon();
-function updateThemeIcon(){
-  var dark=document.documentElement.dataset.theme==='dark';
-  var sun=document.getElementById('themeIconSun');
-  var moon=document.getElementById('themeIconMoon');
-  if(sun)sun.style.display=dark?'block':'none';
-  if(moon)moon.style.display=dark?'none':'block';
+"use strict";
+
+/* ───────────────────────────  THEME  ─────────────────────────── */
+var savedTheme = localStorage.getItem("ro:theme");
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+function syncThemeIcon(){
+  var dark = document.documentElement.dataset.theme === "dark";
+  document.getElementById("iconSun").style.display = dark ? "block" : "none";
+  document.getElementById("iconMoon").style.display = dark ? "none" : "block";
 }
-window.updateThemeIcon=updateThemeIcon;
-
-// ── STATE ──
-var overview={apps:[],totals:{},routes:[],dependencies:[],recent_logs:[],recent_errors:[],event_kinds:[],log_levels:[]};
-var errorSummary={totals:{},by_type:[],by_service:[]};
-var errorClusters=[];
-var errorTimeline=[];
-var metricsSeries=[];
-var tableSort={routes:{key:'p95_ms',dir:-1},logs:{key:'timestamp',dir:-1},deps:{key:'call_count',dir:-1},errors:{key:'count',dir:-1},errorTimeline:{key:'bucket',dir:-1}};
-var tablePages={routes:{page:1,size:20},deps:{page:1,size:20},errors:{page:1,size:20},errorTimeline:{page:1,size:12}};
-var loadingCount=0;
-var projects=[];
-var entries=[];
-var hiddenPrefs=[];
-var selectedProject='';
-var selectedApp='all';
-var selectedRouteId=null;
-var selectedTraceId=null;
-var routeState=null;
-var isRefreshing=false;
-var logSource='all';
-var refreshTimer=null;
-var refreshMs=10000;
-var logWindowMinutes=Number(localStorage.getItem('runtimeObserverLogWindowMinutes')||60);
-var selectedTab='overview';
-var routeSearchQuery='';
-var showHidden=false;
-var copyCache=new Map();
-
-// ── HELPERS ──
-function $(id){return document.getElementById(id);}
-function esc(v){return String(v??'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function num(n){return Number(n||0).toLocaleString();}
-function fmtTs(v){
-  if(!v)return '—';
-  var d=new Date(v);
-  return Number.isFinite(d.getTime())?d.toLocaleString(undefined,{year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}):String(v);
-}
-function pretty(v){try{return JSON.stringify(typeof v==='string'?JSON.parse(v):v,null,2);}catch(e){return String(v??'');}}
-function sortRows(rows,name){var s=tableSort[name]||{key:'',dir:1};return rows.slice().sort(function(a,b){var av=a[s.key],bv=b[s.key];var na=Number(av),nb=Number(bv);if(Number.isFinite(na)&&Number.isFinite(nb))return (na-nb)*s.dir;return String(av||'').localeCompare(String(bv||''))*s.dir;});}
-function sortHeader(name,key,label){return '<th class="sortable" data-sort-table="'+name+'" data-sort-key="'+key+'">'+label+(tableSort[name]&&tableSort[name].key===key?(tableSort[name].dir>0?' ▲':' ▼'):'')+'</th>';}
-function pageState(name){return tablePages[name]||null;}
-function pagedRows(sorted,name){var p=pageState(name);if(!p)return sorted;var total=Math.max(1,Math.ceil(sorted.length/p.size));p.page=Math.min(Math.max(1,p.page),total);return sorted.slice((p.page-1)*p.size,p.page*p.size);}
-function pagerHtml(name,total){var p=pageState(name);if(!p||total<=p.size)return '';var pages=Math.max(1,Math.ceil(total/p.size));return '<div class="pager"><button class="btn" data-page-table="'+name+'" data-page-dir="-1" '+(p.page<=1?'disabled':'')+'>Prev</button><span>Page '+p.page+' of '+pages+' &bull; '+num(total)+' rows</span><button class="btn" data-page-table="'+name+'" data-page-dir="1" '+(p.page>=pages?'disabled':'')+'>Next</button></div>';}
-function setLoading(on){loadingCount=Math.max(0,loadingCount+(on?1:-1));document.body.classList.toggle('loading',loadingCount>0);}
-async function withLoading(fn){setLoading(true);try{return await fn();}finally{setLoading(false);}}
-function spark(rows,key,danger){var vals=rows.map(function(r){return Number(r[key]||0);});var max=Math.max(1,Math.max.apply(null,vals));return '<div class="spark">'+(vals.length?vals.slice(-24).map(function(v){return '<span class="spark-bar '+(danger?'err':'')+'" style="height:'+Math.max(3,v/max*36)+'px"></span>';}).join(''):'<span class="small">No recent data</span>')+'</div>';}
-
-// ── THEME TOGGLE ──
+syncThemeIcon();
 function toggleTheme(){
-  var next=document.documentElement.dataset.theme==='dark'?'light':'dark';
-  document.documentElement.dataset.theme=next;
-  localStorage.setItem('runtimeObserverTheme',next);
-  updateThemeIcon();
+  var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("ro:theme", next);
+  syncThemeIcon();
+  render();
 }
 
-// ── AUTH ──
-function showLogin(){
-  if(refreshTimer)clearInterval(refreshTimer);
-  $('loginOverlay').classList.remove('hidden');
+/* ───────────────────────────  STATE  ─────────────────────────── */
+var S = {
+  user: null,
+  projects: [],
+  apps: [],
+  routes: [],
+  deps: [],
+  recentLogs: [],
+  recentErrors: [],
+  eventKinds: [],
+  logLevels: [],
+  totals: {},
+  entries: [],          // entrypoints (full route list incl hidden)
+  hiddenPrefs: [],
+  errorClusters: [],
+  errorTimeline: [],
+  metricsSeries: [],
+  routeState: null,     // {route, traces, logs} for selected route
+  selectedProject: "",
+  selectedApp: "all",
+  selectedRouteId: null,
+  selectedTraceId: null,
+  selectedClusterId: null,
+  selectedDepId: null,
+  selectedLogId: null,
+  page: "pulse",
+  windowMinutes: Number(localStorage.getItem("ro:window") || 60),
+  refreshMs: Number(localStorage.getItem("ro:refresh") || 10000),
+  showHidden: false,
+  searchQuery: "",
+  refreshTimer: null,
+  isRefreshing: false,
+  loading: 0,
+  waterfallTab: "all",  // all | spans | deps | logs | raw
+  copyCache: new Map(),
+  traceMap: null,       // current loaded trace map data
+  depContext: null,     // current loaded dep context
+  tracesRouteSearch: "",
+  tracesRoutePage: 1,
+  tracesCallSearch: "",
+  tracesCallPage: 1,
+  tracesPageSize: 25,
+  tracesRoutesCollapsed: localStorage.getItem("ro:tracesRoutesCollapsed") === "1",
+  tracesCallsCollapsed: localStorage.getItem("ro:tracesCallsCollapsed") === "1",
+  railExpanded: localStorage.getItem("ro:railExpanded") === "1",
+  routesSort: { col: "calls", dir: "desc" },
+  routesMethodFilter: "",
+  depsSort: { col: "calls", dir: "desc" },
+};
+
+/* ───────────────────────────  HELPERS  ─────────────────────────── */
+var $ = function(id){ return document.getElementById(id); };
+function esc(v){ return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+function num(n){ return Number(n || 0).toLocaleString(); }
+function fmtMs(v){
+  if (v == null) return "—";
+  var n = Number(v); if (!Number.isFinite(n)) return "—";
+  if (n < 1)     return n.toFixed(2) + "ms";
+  if (n < 1000)  return Math.round(n) + "ms";
+  if (n < 60000) return (n/1000).toFixed(n < 10000 ? 2 : 1) + "s";
+  if (n < 3600000)  return (n/60000).toFixed(1) + "m";
+  return (n/3600000).toFixed(1) + "h";
 }
-function hideLogin(user){
-  $('loginOverlay').classList.add('hidden');
-  $('userText').textContent=user?'signed in as '+user.username:'';
+function fmtPct(n){ if (n == null || !Number.isFinite(n)) return "—"; if (n === 0) return "0%"; if (n < 0.01) return "<0.01%"; return n.toFixed(2) + "%"; }
+function sortRows(rows, columns, state){
+  var def = columns[state.col] || columns[Object.keys(columns)[0]];
+  var sign = state.dir === "asc" ? 1 : -1;
+  return rows.slice().sort(function(a,b){
+    var av = def.get(a), bv = def.get(b);
+    if (def.numeric) return ((Number(av)||0) - (Number(bv)||0)) * sign;
+    return String(av || "").toLowerCase().localeCompare(String(bv || "").toLowerCase()) * sign;
+  });
 }
-async function api(path,options){
-  options=options||{};
-  var r=await fetch(path,Object.assign({cache:'no-store'},options,{headers:Object.assign({'Content-Type':'application/json'},options.headers||{})}));
-  if(r.status===401){showLogin();throw new Error('Authentication required');}
-  if(!r.ok)throw new Error(await r.text());
+function sortHeader(label, key, cls, state, attr){
+  var arrow = state.col !== key ? "·" : (state.dir === "asc" ? "▲" : "▼");
+  return '<th class="sortable ' + (cls || "") + '" ' + attr + '="' + key + '">' + esc(label) + ' <span class="arr">' + arrow + '</span></th>';
+}
+function toggleSort(state, key){
+  if (state.col === key) state.dir = state.dir === "asc" ? "desc" : "asc";
+  else { state.col = key; state.dir = "desc"; }
+}
+function fmtTs(v){
+  if (!v) return "—";
+  var d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return String(v);
+  return d.toLocaleString(undefined, {month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false});
+}
+function fmtTime(v){
+  if (!v) return "—";
+  var d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return d.toLocaleTimeString(undefined, {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false});
+}
+function fmtRel(v){
+  if (!v) return "—";
+  var d = new Date(v).getTime();
+  if (!Number.isFinite(d)) return "—";
+  var s = Math.max(0, Math.round((Date.now() - d) / 1000));
+  if (s < 5) return "now";
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.round(s/60) + "m ago";
+  if (s < 86400) return Math.round(s/3600) + "h ago";
+  return Math.round(s/86400) + "d ago";
+}
+function pretty(v){ try { return JSON.stringify(typeof v === "string" ? JSON.parse(v) : v, null, 2); } catch(e){ return String(v == null ? "" : v); } }
+function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+function setLoading(on){ S.loading = Math.max(0, S.loading + (on ? 1 : -1)); document.body.classList.toggle("loading", S.loading > 0); }
+async function withLoading(fn){ setLoading(true); try { return await fn(); } finally { setLoading(false); } }
+
+/* ───────────────────────────  API  ─────────────────────────── */
+async function api(path, opts){
+  opts = opts || {};
+  var r = await fetch(path, Object.assign({cache:"no-store"}, opts, {headers: Object.assign({"Content-Type":"application/json"}, opts.headers || {})}));
+  if (r.status === 401){ showLogin(); throw new Error("auth required"); }
+  if (!r.ok){ throw new Error(await r.text()); }
   return r.json();
 }
+
+/* ───────────────────────────  AUTH  ─────────────────────────── */
+function showLogin(){
+  if (S.refreshTimer) clearInterval(S.refreshTimer);
+  $("loginOverlay").style.display = "grid";
+}
+function hideLogin(user){
+  $("loginOverlay").style.display = "none";
+  S.user = user;
+  $("userWho").textContent = user ? user.username : "—";
+}
 async function checkAuth(){
-  try{var data=await api('/api/auth/me');hideLogin(data.user);return true;}
-  catch(e){return false;}
+  try { var data = await api("/api/auth/me"); hideLogin(data.user); return true; }
+  catch(e){ return false; }
 }
 async function loginSubmit(ev){
   ev.preventDefault();
-  $('loginError').textContent='';
-  var r=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:$('loginUsername').value,password:$('loginPassword').value})});
-  if(!r.ok){$('loginError').textContent='Sign in failed';return;}
-  var data=await r.json();
+  $("loginError").textContent = "";
+  var r = await fetch("/api/auth/login", {method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({username:$("loginUsername").value, password:$("loginPassword").value})});
+  if (!r.ok){ $("loginError").textContent = "Sign in failed"; return; }
+  var data = await r.json();
   hideLogin(data.user);
-  setRefreshIntervalMs($('refreshInterval').value);
-  refresh();
+  setRefresh(S.refreshMs);
+  await refresh();
 }
-async function logout(){await fetch('/api/auth/logout',{method:'POST'});showLogin();}
+async function logout(){ await fetch("/api/auth/logout", {method:"POST"}); showLogin(); }
 
-// ── FILTER HELPERS ──
-function projectApps(){
-  return overview.apps.filter(function(a){return !selectedProject||a.project_name===selectedProject;});
+/* ───────────────────────────  SCOPING  ─────────────────────────── */
+function inScope(rows){
+  if (!S.selectedProject) return rows;
+  var apps = S.apps.filter(function(a){ return a.project_name === S.selectedProject; });
+  var appIds = new Set(apps.map(function(a){ return a.id; }));
+  var scoped = rows.filter(function(r){
+    if (r.project_name) return r.project_name === S.selectedProject;
+    if (r.app_id) return appIds.has(r.app_id);
+    if (r.id && apps.some(function(a){ return a.id === r.id; })) return true;
+    return false;
+  });
+  if (S.selectedApp === "all") return scoped;
+  return scoped.filter(function(r){ return r.app_id === S.selectedApp || r.id === S.selectedApp; });
 }
-function visible(rows){
-  var scoped=selectedProject?rows.filter(function(r){return r.project_name===selectedProject||projectApps().some(function(a){return a.id===(r.app_id||r.id);});}):rows;
-  return selectedApp==='all'?scoped:scoped.filter(function(r){return r.app_id===selectedApp||r.id===selectedApp;});
-}
-function appName(a){return a&&(a.display_name||a.service_name)||'unknown app';}
-function filterLogSource(rows){
-  if(logSource==='client')return rows.filter(function(l){return (l.service_name||'').includes('frontend')||String(l.logger_name||'').startsWith('browser.');});
-  if(logSource==='backend')return rows.filter(function(l){return (l.service_name||'').includes('backend');});
-  return rows;
-}
-function currentLogRows(){
-  var rows=filterLogSource(visible(overview.recent_logs||[]));
-  var level=$('level')&&$('level').value;
-  if(level)rows=rows.filter(function(l){return String(l.level||'').toUpperCase()===level;});
-  return rows;
-}
-function applyLocalLogFilters(){
-  var q=($('logSearch').value||'').toLowerCase();
-  var rows=currentLogRows();
-  var filtered=q?rows.filter(function(l){return (l.message||'').toLowerCase().includes(q)||(l.service_name||'').toLowerCase().includes(q);}):rows;
-  renderLogs('logs',filtered);
-}
-function dependencyLabel(dep){
-  if(dep.dependency_type==='db')return ('DB '+(dep.target||'unknown')+' '+(dep.operation||'')).trim().slice(0,120);
-  if(dep.dependency_type==='http')return ('HTTP '+(dep.operation||'')+' '+(dep.target||'')).trim();
-  if(dep.dependency_type==='package')return 'pkg '+dep.target;
-  return ((dep.dependency_type||'dep')+' '+(dep.target||'')+' '+(dep.operation||'')).trim();
+function scopedApps(){ return S.apps.filter(function(a){ return !S.selectedProject || a.project_name === S.selectedProject; }); }
+function appName(a){ return a && (a.display_name || a.service_name) || "unknown"; }
+
+/* ───────────────────────────  TIME WINDOW  ─────────────────────────── */
+function logWindowQuery(){ return "log_window_minutes=" + encodeURIComponent(S.windowMinutes) + "&log_limit=1000"; }
+function logWindowStartParam(){ if (!S.windowMinutes) return ""; return new Date(Date.now() - S.windowMinutes * 60000).toISOString(); }
+function fmtWindow(){
+  if (!S.windowMinutes) return "all retained";
+  if (S.windowMinutes < 60) return "last " + S.windowMinutes + "m";
+  if (S.windowMinutes < 1440) return "last " + (S.windowMinutes/60) + "h";
+  return "last " + (S.windowMinutes/1440) + "d";
 }
 
-// ── TAB SWITCHING ──
-function switchTab(tabName){
-  selectedTab=tabName;
-  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.toggle('active',b.dataset.tab===tabName);});
-  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.toggle('active',p.id==='panel-'+tabName);});
+/* ───────────────────────────  REFRESH  ─────────────────────────── */
+function setRefresh(ms){
+  S.refreshMs = Number(ms) || 0;
+  localStorage.setItem("ro:refresh", String(S.refreshMs));
+  if (S.refreshTimer) clearInterval(S.refreshTimer);
+  S.refreshTimer = null;
+  var dot = $("liveDot");
+  dot.classList.remove("paused", "error");
+  if (S.refreshMs === 0){
+    dot.classList.add("paused");
+    dot.classList.remove("pulsing");
+    $("liveText").textContent = "manual";
+  } else {
+    dot.classList.add("pulsing");
+    $("liveText").textContent = "live · " + (S.refreshMs/1000) + "s";
+    S.refreshTimer = setInterval(refresh, S.refreshMs);
+  }
 }
 
-// ── ROUTE SEARCH ──
-function applyRouteSearch(){
-  renderEntries();
+async function refresh(){
+  if (S.isRefreshing) return;
+  S.isRefreshing = true;
+  try {
+    var scope = S.selectedProject ? "&project_name=" + encodeURIComponent(S.selectedProject) : "";
+    var appScope = S.selectedApp && S.selectedApp !== "all" ? "&app_id=" + encodeURIComponent(S.selectedApp) : "";
+    var results = await Promise.all([
+      api("/api/overview?" + logWindowQuery()),
+      api("/api/projects"),
+      api("/api/entrypoints?include_hidden=true"),
+      api("/api/preferences/hidden"),
+      api("/api/errors/clusters?limit=200" + scope + appScope),
+      api("/api/errors/timeline?window_minutes=1440&bucket_minutes=60" + scope + appScope),
+      api("/api/metrics/timeseries?window_minutes=" + Math.max(60, S.windowMinutes || 1440) + "&bucket_minutes=" + bucketSize() + scope + appScope),
+    ]);
+    var ov = results[0];
+    S.apps = ov.apps || [];
+    S.routes = ov.routes || [];
+    S.deps = ov.dependencies || [];
+    S.recentLogs = ov.recent_logs || [];
+    S.recentErrors = ov.recent_errors || [];
+    S.eventKinds = ov.event_kinds || [];
+    S.logLevels = ov.log_levels || [];
+    S.totals = ov.totals || {};
+    S.projects = results[1] || [];
+    S.entries = results[2] || [];
+    S.hiddenPrefs = results[3] || [];
+    S.errorClusters = results[4] || [];
+    S.errorTimeline = results[5] || [];
+    S.metricsSeries = results[6] || [];
+    if (S.selectedProject && !S.projects.some(function(p){ return p.project_name === S.selectedProject; })){
+      S.selectedProject = "";
+    }
+    if (S.selectedRouteId) await loadRoute(S.selectedRouteId, false);
+    $("liveDot").classList.remove("error");
+    render();
+  } catch(err){
+    $("liveDot").classList.add("error");
+    $("liveText").textContent = "refresh failed";
+    console.error(err);
+  } finally {
+    S.isRefreshing = false;
+  }
 }
 
-// ── PROJECT ACTIONS ──
-function selectProject(name){
-  selectedProject=name;
-  selectedApp='all';
-  selectedRouteId=null;
-  selectedTraceId=null;
-  routeState=null;
-  $('topbarProject').textContent=name||'No project selected';
+function bucketSize(){
+  var w = S.windowMinutes || 1440;
+  if (w <= 60) return 5;
+  if (w <= 360) return 15;
+  if (w <= 1440) return 60;
+  return 180;
+}
+
+/* ───────────────────────────  PAGE NAV  ─────────────────────────── */
+function goto(page){
+  S.page = page;
+  document.querySelectorAll(".rail-btn").forEach(function(b){ b.classList.toggle("active", b.dataset.page === page); });
+  $("crumbPageVal").textContent = page;
   render();
+}
+
+function resetTracesPageState(){
+  S.tracesRouteSearch = "";
+  S.tracesRoutePage = 1;
+  S.tracesCallSearch = "";
+  S.tracesCallPage = 1;
+}
+
+/* ───────────────────────────  PROJECTS  ─────────────────────────── */
+function selectProject(name){
+  S.selectedProject = name;
+  S.selectedApp = "all";
+  S.selectedRouteId = null;
+  S.selectedTraceId = null;
+  S.routeState = null;
+  resetTracesPageState();
+  if (!S.page || S.page === "projects") S.page = "pulse";
+  render();
+  withLoading(refresh);
 }
 function backToProjects(){
-  selectedProject='';
-  selectedApp='all';
-  selectedRouteId=null;
-  selectedTraceId=null;
-  routeState=null;
-  $('topbarProject').textContent='No project selected';
+  S.selectedProject = "";
+  S.selectedApp = "all";
+  S.selectedRouteId = null;
+  S.selectedTraceId = null;
+  S.routeState = null;
+  resetTracesPageState();
   render();
 }
-async function copyText(value){
-  try{await navigator.clipboard.writeText(value);return true;}
-  catch(e){return false;}
-}
 async function deleteProject(name){
-  var typed=prompt('Delete project "'+name+'" and all telemetry, apps, routes, logs, traces, dependencies, and SDK keys? Type the project name to confirm.');
-  if(typed!==name)return;
-  await api('/api/projects/'+encodeURIComponent(name),{method:'DELETE'});
-  if(selectedProject===name)backToProjects();
+  var typed = prompt("Delete project \"" + name + "\" and ALL its telemetry (apps, routes, logs, traces, deps, SDK keys)?\n\nType the project name to confirm.");
+  if (typed !== name) return;
+  await api("/api/projects/" + encodeURIComponent(name), {method:"DELETE"});
+  if (S.selectedProject === name) backToProjects();
   await refresh();
 }
 async function createProjectKey(name){
-  var data=await api('/api/projects/'+encodeURIComponent(name)+'/api-keys',{method:'POST'});
-  $('drawerTitle').textContent='New SDK key: '+data.project_name;
-  $('drawerSub').textContent='Copy this key now. It is shown only once and stored hashed in the database.';
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" id="copyGeneratedKey" data-api-key="'+esc(data.api_key)+'">Copy API key</button><button class="btn" data-project-keys="'+esc(data.project_name)+'">Manage keys</button></div><div style="margin-top:12px"><div class="small" style="margin-bottom:4px">Project</div><pre>'+esc(data.project_name)+'</pre><div class="small" style="margin-bottom:4px;margin-top:8px">API key</div><pre class="mono">'+esc(data.api_key)+'</pre></div>';
-  openDrawer();
-  $('copyGeneratedKey').onclick=async function(){$('copyGeneratedKey').textContent=await copyText(data.api_key)?'Copied':'Copy failed';};
-  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){withLoading(function(){return showProjectKeys(b.dataset.projectKeys);});};});
+  var data = await api("/api/projects/" + encodeURIComponent(name) + "/api-keys", {method:"POST"});
+  openDrawer({
+    title: "New SDK key · " + data.project_name,
+    sub: "Copy this key now. It is shown only once and stored as a hash.",
+    bodyHTML: '<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn btn-primary" id="copyNewKey">COPY KEY</button><button class="btn" id="manageKeysFromNew" data-project="' + esc(data.project_name) + '">MANAGE KEYS</button></div>' +
+              '<div class="panel"><div class="panel-head"><span class="panel-title">PROJECT</span></div><div class="panel-body"><span class="mono">' + esc(data.project_name) + '</span></div></div>' +
+              '<div class="panel"><div class="panel-head"><span class="panel-title">API KEY</span></div><div class="panel-body"><pre style="margin:0">' + esc(data.api_key) + '</pre></div></div>',
+  });
+  $("copyNewKey").onclick = async function(){
+    try { await navigator.clipboard.writeText(data.api_key); $("copyNewKey").textContent = "✓ COPIED"; }
+    catch(e){ $("copyNewKey").textContent = "COPY FAILED"; }
+  };
+  var mk = $("manageKeysFromNew");
+  if (mk) mk.onclick = function(){ withLoading(function(){ return showProjectKeys(data.project_name); }); };
   await refresh();
 }
 async function showProjectKeys(name){
-  var keys=await api('/api/projects/'+encodeURIComponent(name)+'/api-keys');
-  $('drawerTitle').textContent='SDK keys: '+name;
-  $('drawerSub').textContent='Full key values are shown only when generated. Stored keys are hashed in the DB.';
-  var keysHtml=keys.length?keys.map(function(k){
-    return '<div class="card" style="margin-bottom:8px"><div class="card-body"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div><div style="font-weight:600;font-size:13px">'+esc(k.name)+'</div><div class="small mono">prefix '+esc(k.prefix)+' &bull; created '+esc(fmtTs(k.created_at))+' &bull; last used '+esc(fmtTs(k.last_used_at))+(k.revoked_at?' &bull; revoked '+esc(fmtTs(k.revoked_at)):'')+' </div></div>'+(k.revoked_at?'':'<button class="btn btn-danger" data-revoke-key="'+esc(k.id)+'" data-project="'+esc(name)+'">Revoke</button>')+'</div></div></div>';
-  }).join(''):'<div class="empty-state">No SDK keys yet.</div>';
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-project-key="'+esc(name)+'">Generate new SDK key</button></div>'+keysHtml;
-  openDrawer();
-  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){withLoading(function(){return createProjectKey(b.dataset.projectKey);});};});
-  document.querySelectorAll('[data-revoke-key]').forEach(function(b){
-    b.onclick=async function(){
-      if(confirm('Revoke this SDK key?')){
-        await withLoading(async function(){
-          await api('/api/projects/'+encodeURIComponent(b.dataset.project)+'/api-keys/'+encodeURIComponent(b.dataset.revokeKey),{method:'DELETE'});
-          await showProjectKeys(b.dataset.project);
-          await refresh();
-        });
-      }
+  var keys = await api("/api/projects/" + encodeURIComponent(name) + "/api-keys");
+  var rows = keys.length ? keys.map(function(k){
+    return '<tr><td>' + esc(k.name) + '</td><td class="mono dim">' + esc(k.prefix) + '</td><td class="dim">' + esc(fmtTs(k.created_at)) + '</td><td class="dim">' + esc(fmtTs(k.last_used_at)) + '</td><td>' + (k.revoked_at ? '<span class="chip bad">REVOKED</span>' : '<span class="chip good">ACTIVE</span>') + '</td><td>' + (k.revoked_at ? '' : '<button class="btn btn-sm btn-danger" data-revoke="' + esc(k.id) + '" data-project="' + esc(name) + '">REVOKE</button>') + '</td></tr>';
+  }).join("") : '<tr><td colspan="6" class="dim" style="text-align:center;padding:24px">No SDK keys yet.</td></tr>';
+  openDrawer({
+    title: "SDK keys · " + name,
+    sub: "Stored keys are hashed. Full key is only shown when generated.",
+    bodyHTML: '<div style="margin-bottom:12px"><button class="btn btn-primary" data-genkey="' + esc(name) + '">+ NEW SDK KEY</button></div>' +
+              '<div class="panel" style="margin-bottom:0"><table class="tbl"><thead><tr><th>name</th><th>prefix</th><th>created</th><th>last used</th><th>status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div>',
+  });
+  document.querySelectorAll("[data-genkey]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return createProjectKey(b.dataset.genkey); }); }; });
+  document.querySelectorAll("[data-revoke]").forEach(function(b){
+    b.onclick = async function(){
+      if (!confirm("Revoke this SDK key?")) return;
+      await withLoading(async function(){
+        await api("/api/projects/" + encodeURIComponent(b.dataset.project) + "/api-keys/" + encodeURIComponent(b.dataset.revoke), {method:"DELETE"});
+        await showProjectKeys(b.dataset.project);
+        await refresh();
+      });
     };
   });
 }
 
-// ── RENDER PROJECTS ──
-function renderProjects(){
-  var cards=projects.length?projects.map(function(p){
-    var name=p.project_name||'default';
-    return '<div class="project-card"><div class="project-card-header"><div><div class="project-name">'+esc(name)+'</div><div class="project-meta">'+num(p.app_count)+' apps &bull; '+num(p.request_count)+' requests &bull; '+num(p.error_count)+' errors &bull; '+num(p.api_key_count)+' active SDK keys</div><div class="project-meta">Created '+esc(fmtTs(p.created_at))+' &bull; Last seen '+esc(fmtTs(p.last_seen))+'</div></div></div><div class="project-actions"><button class="btn btn-primary" data-project-select="'+esc(name)+'">Open</button><button class="btn" data-project-key="'+esc(name)+'" style="font-size:12px">Generate SDK key</button><button class="btn" data-project-keys="'+esc(name)+'" style="font-size:12px">Manage keys</button><button class="btn btn-danger" data-project-delete="'+esc(name)+'" style="font-size:12px">Delete</button></div></div>';
-  }).join(''):'<div class="empty-state" style="grid-column:1/-1"><p>No projects yet. Create an SDK key for the project name your app will send, configure the SDK, then exercise your app.</p><button class="btn btn-primary" onclick="createProjectKey(prompt(\'Project name\',\'default\')||\'default\')">Create first project SDK key</button></div>';
-  $('projectCards').innerHTML=cards;
-  document.querySelectorAll('[data-project-select]').forEach(function(b){b.onclick=function(){selectProject(b.dataset.projectSelect);};});
-  document.querySelectorAll('[data-project-key]').forEach(function(b){b.onclick=function(){withLoading(function(){return createProjectKey(b.dataset.projectKey);});};});
-  document.querySelectorAll('[data-project-keys]').forEach(function(b){b.onclick=function(){withLoading(function(){return showProjectKeys(b.dataset.projectKeys);});};});
-  document.querySelectorAll('[data-project-delete]').forEach(function(b){b.onclick=function(){withLoading(function(){return deleteProject(b.dataset.projectDelete);});};});
-  $('projectScreen').classList.toggle('hidden',!!selectedProject);
-  $('dashboardShell').classList.toggle('hidden',!selectedProject);
-}
-
-// ── RENDER APPS ──
-function renderApps(){
-  var apps=projectApps();
-  var html='<button class="app-tab" onclick="backToProjects()" style="font-size:11px">&larr; Back</button>';
-  html+='<button class="app-tab '+(selectedApp==='all'?'active':'')+'" data-app="all">All apps</button>';
-  apps.forEach(function(a){html+='<button class="app-tab '+(selectedApp===a.id?'active':'')+'" data-app="'+esc(a.id)+'">'+esc(appName(a))+'</button>';});
-  html+='<button class="app-tab" onclick="createProjectKey(\''+esc(selectedProject)+'\')" style="font-size:11px;margin-left:auto">+ SDK key</button>';
-  $('appTabs').innerHTML=html;
-  document.querySelectorAll('[data-app]').forEach(function(b){
-    b.onclick=function(){
-      selectedApp=b.dataset.app;
-      selectedRouteId=null;
-      selectedTraceId=null;
-      routeState=null;
-      render();
-      withLoading(refresh);
-    };
-  });
-}
-
-// ── RENDER ENTRIES ──
-function renderEntries(){
-  var btn=$('showHiddenBtn');
-  if(btn){btn.classList.toggle('active',showHidden);btn.innerHTML=(showHidden?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg> Hide hidden':'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg> Show hidden');}
-  var rows=visible(entries).filter(function(r){
-    if(Number(r.call_count||0)===0)return false;
-    if(!showHidden&&r.hidden)return false;
-    if(!routeSearchQuery)return true;
-    return (r.route_pattern+' '+r.method).toLowerCase().includes(routeSearchQuery.toLowerCase());
-  });
-  if(!rows.length){
-    $('entrypoints').innerHTML='<div class="empty-state" style="margin:8px">No routes'+(routeSearchQuery?' matching "'+esc(routeSearchQuery)+'"':' yet. Exercise the app and telemetry will appear here.')+'</div>';
-    return;
-  }
-  $('entrypoints').innerHTML=rows.map(function(r){
-    var method=r.method||'GET';
-    var methodClass='method-'+((['GET','POST','PUT','PATCH','DELETE'].includes(method))?method:'OTHER');
-    var eyeIcon=r.hidden?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
-    return '<button class="route-item'+(selectedRouteId===r.id?' active':'')+(r.hidden?' hidden-route':'')+'" data-route="'+esc(r.id)+'">'
-      +'<div class="route-item-body">'
-      +'<div class="route-top"><span class="method-badge '+methodClass+'">'+esc(method)+'</span><span class="route-path" title="'+esc(r.route_pattern)+'">'+esc(r.route_pattern)+'</span></div>'
-      +'<div class="route-meta"><span>'+esc(r.service_name||'')+'</span><span>&middot;</span><span>'+num(r.call_count)+' calls</span></div>'
-      +'</div>'
-      +'<div class="route-item-actions"><button class="icon-btn" title="'+(r.hidden?'Restore':'Hide')+'" data-pref-action="'+(r.hidden?'restore':'hide')+'" data-pref-kind="route" data-pref-id="'+esc(r.id)+'" data-pref-app="'+esc(r.app_id)+'">'+eyeIcon+'</button></div>'
-      +'</button>';
-  }).join('');
-  document.querySelectorAll('[data-route]').forEach(function(b){b.onclick=function(){withLoading(function(){return selectRoute(b.dataset.route);});};});
-  document.querySelectorAll('[data-pref-action]').forEach(function(b){
-    b.onclick=async function(ev){
-      ev.preventDefault();
-      ev.stopPropagation();
-      await withLoading(function(){return setHidden(b.dataset.prefKind,b.dataset.prefId,b.dataset.prefApp||null,b.dataset.prefAction==='hide');});
-    };
-  });
-}
-
-// ── RENDER BARS ──
-function renderSortableTable(id,name,columns,rows,empty){
-  if(!rows.length){$(id).innerHTML='<div class="empty-state">'+esc(empty||'No data yet')+'</div>';return;}
-  var sorted=sortRows(rows,name);
-  var pageRows=pagedRows(sorted,name);
-  var start=pageState(name)?(pageState(name).page-1)*pageState(name).size:0;
-  $(id).innerHTML='<div class="table-wrap"><table><thead><tr>'+columns.map(function(c){return sortHeader(name,c.key,c.label);}).join('')+'</tr></thead><tbody>'+pageRows.map(function(r,i){return '<tr data-row-index="'+(start+i)+'">'+columns.map(function(c){return '<td>'+esc(c.render?c.render(r):r[c.key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>'+pagerHtml(name,sorted.length);
-}
-function wireSortTables(){
-  document.querySelectorAll('[data-sort-table]').forEach(function(th){th.onclick=function(){var name=th.dataset.sortTable,key=th.dataset.sortKey;var cur=tableSort[name]||{};tableSort[name]={key:key,dir:cur.key===key?-cur.dir:1};if(pageState(name))pageState(name).page=1;render();};});
-  document.querySelectorAll('[data-page-table]').forEach(function(btn){btn.onclick=function(){var p=pageState(btn.dataset.pageTable);if(!p)return;p.page+=Number(btn.dataset.pageDir||0);render();};});
-}
-function renderBars(id,rows,label,value,danger){
-  var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r[value]||0);})));
-  $(id).innerHTML=rows.length?rows.slice(0,12).map(function(r){
-    var pct=Math.max(4,Number(r[value]||0)/max*100);
-    return '<div class="bar-row"><span class="bar-label" title="'+esc(r[label])+'">'+esc(String(r[label]||'').slice(0,30))+'</span><div class="bar-track"><div class="bar-fill'+(danger?' err':'')+'" style="width:'+pct+'%"></div></div><span class="bar-val">'+num(r[value])+'</span></div>';
-  }).join(''):'<div class="empty-state">No data yet</div>';
-}
-
-// ── RENDER MIX ──
-var eventLabels={log_record:'Logs',db_query:'Database queries',http_client_call:'HTTP/API calls',route_discovered:'Entry points discovered',request_finished:'Requests completed',request_started:'Requests started',sdk_diagnostic:'SDK diagnostics',app_started:'App starts',span_started:'Spans/functions',span_finished:'Spans/functions',dependency_inventory:'Dependency inventory',exception_raised:'Exceptions'};
-function sumMix(rows,key){
-  var scoped=visible(rows||[]);
-  var grouped=new Map();
-  scoped.forEach(function(r){
-    var raw=r[key]||'unknown';
-    var lbl=eventLabels[raw]||String(raw).replace(/_/g,' ');
-    grouped.set(lbl,(grouped.get(lbl)||0)+Number(r.count||0));
-  });
-  return Array.from(grouped.entries()).map(function(e){return {label:e[0],value:e[1]};}).sort(function(a,b){return b.value-a.value;});
-}
-function renderMix(){
-  var kinds=sumMix(overview.event_kinds,'kind').filter(function(r){return r.label!=='SDK diagnostics'||r.value>0;});
-  var levels=sumMix(overview.log_levels,'level');
-  $('mix').innerHTML='<div class="small" style="margin-bottom:8px;font-weight:600">Activity by kind</div><div id="kindBars"></div><div class="small" style="margin:12px 0 8px;font-weight:600">Logs by level</div><div id="levelBars"></div>';
-  renderBars('kindBars',kinds,'label','value',false);
-  renderBars('levelBars',levels,'label','value',true);
-}
-
-// ── RENDER INSIGHTS ──
-function renderInsights(routes,logs,errors,deps){
-  var reqSeries=metricsSeries.reduce(function(a,r){return a+Number(r.requests||0);},0);
-  var errSeries=metricsSeries.reduce(function(a,r){return a+Number(r.request_errors||0)+Number(r.error_logs||0)+Number(r.exceptions||0);},0);
-  var slow=routes.slice().sort(function(a,b){return Number(b.p95_ms||0)-Number(a.p95_ms||0);})[0];
-  var noisy=logs.reduce(function(m,l){var k=l.service_name||'unknown';m[k]=(m[k]||0)+1;return m;},{});
-  var noisyName=Object.keys(noisy).sort(function(a,b){return noisy[b]-noisy[a];})[0]||'—';
-  $('insights').innerHTML='<div class="insight-card"><div class="insight-title">Traffic trend</div><div class="insight-value">'+num(reqSeries)+'</div>'+spark(metricsSeries,'requests',false)+'</div>'+
-    '<div class="insight-card"><div class="insight-title">Error signals</div><div class="insight-value" style="color:var(--red)">'+num(errSeries)+'</div>'+spark(metricsSeries,'error_logs',true)+'</div>'+
-    '<div class="insight-card"><div class="insight-title">Slowest route</div><div class="insight-value">'+esc(slow?Math.round(Number(slow.p95_ms||0))+'ms':'—')+'</div><div class="small mono">'+esc(slow?(slow.method+' '+slow.route_pattern):'No route latency')+'</div></div>'+
-    '<div class="insight-card"><div class="insight-title">Noisiest service</div><div class="insight-value">'+esc(noisyName)+'</div><div class="small">'+num(noisy[noisyName]||0)+' logs in selected window</div></div>';
-}
-
-// ── RENDER DEPENDENCIES ──
-function renderDependencies(rows){
-  renderSortableTable('deps','deps',[{key:'display',label:'Dependency'},{key:'service_name',label:'Service'},{key:'call_count',label:'Calls'},{key:'error_count',label:'Errors'},{key:'p95_duration_ms',label:'p95 ms',render:function(r){return r.p95_duration_ms?Math.round(Number(r.p95_duration_ms)):'';}}],rows,'No dependency calls yet');
-  document.querySelectorAll('#deps tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){var dep=sortRows(rows,'deps')[Number(tr.dataset.rowIndex||0)];withLoading(function(){return openDependency(dep);});};});
-  return;
-  var max=Math.max(1,Math.max.apply(null,rows.map(function(r){return Number(r.call_count||0);})));
-  $('deps').innerHTML=rows.length?rows.slice(0,12).map(function(r){
-    var sample=r.last_sample||{};
-    var p=sample.payload||{};
-    var who=p.source_function||p.route_pattern||p.source_file||r.service_name||'unknown caller';
-    var sql=p.rendered_statement||p.statement_template||p.statement_fingerprint||'';
-    var pct=Math.max(4,Number(r.call_count||0)/max*100);
-    var payload=JSON.stringify(r);
-    return '<div class="dep-card" data-dep="'+esc(payload)+'"><div class="dep-header"><span class="dep-name">'+esc(r.display)+'</span><span class="pill">'+num(r.call_count)+' calls</span></div><div class="bar-row"><span class="bar-label small">'+esc(who)+'</span><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:'+pct+'%"></div></div><span class="bar-val">'+(r.p95_duration_ms?Math.round(Number(r.p95_duration_ms))+'ms':'')+'</span></div><div class="dep-sql">'+esc((sql||(r.service_name||'')+' '+(r.operation||'')).slice(0,180))+'</div>'+(r.error_count?'<div class="dep-error">'+num(r.error_count)+' errors</div>':'')+'</div>';
-  }).join(''):'<div class="empty-state">No dependency calls yet</div>';
-  document.querySelectorAll('.dep-card').forEach(function(el){el.onclick=function(){openDependency(JSON.parse(el.dataset.dep));};});
-}
-
-// ── RENDER ERRORS ──
-function renderErrors(){
-  var rows=visible(overview.recent_errors||[]);
-  var clusters=visible(errorClusters||[]);
-  renderSortableTable('errorClusters','errors',[{key:'type',label:'Type'},{key:'normalized_message',label:'Message',render:function(r){return String(r.normalized_message||'').slice(0,90);}},{key:'service_name',label:'Service'},{key:'route_pattern',label:'Route',render:function(r){return ((r.method||'')+' '+(r.route_pattern||'')).trim();}},{key:'count',label:'Count'},{key:'last_seen',label:'Last seen',render:function(r){return fmtTs(r.last_seen);}}],clusters,'No captured errors.');
-  document.querySelectorAll('#errorClusters tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){var e=sortRows(clusters,'errors')[Number(tr.dataset.rowIndex||0)];withLoading(function(){return openError(e.app_id,e.id);});};});
-  $('errorTimeline').innerHTML=spark(errorTimeline,'count',true)+'<div class="small" style="margin:6px 0 10px">'+num(errorTimeline.reduce(function(a,r){return a+Number(r.count||0);},0))+' exceptions in timeline window</div><div id="errorTimelineTable"></div>';
-  renderSortableTable('errorTimelineTable','errorTimeline',[{key:'bucket',label:'Time',render:function(r){return fmtTs(r.bucket);}},{key:'type',label:'Type'},{key:'project_name',label:'Project'},{key:'service_name',label:'Service'},{key:'count',label:'Count'}],errorTimeline,'No error timeline events.');
-  $('errors').innerHTML=rows.length?rows.map(function(e){
-    return '<button class="error-item" data-error="'+esc(e.app_id)+'|'+esc(e.id)+'"><div class="error-header"><span class="error-type">'+esc(e.type)+'</span><span class="pill" style="color:var(--red)">'+num(e.count)+'x</span></div><div class="error-msg">'+esc(e.normalized_message)+'</div><div class="error-meta">'+esc(e.service_name)+' &bull; '+esc(fmtTs(e.last_seen))+' &bull; trace '+esc(e.sample_trace_id||'none')+'</div></button>';
-  }).join(''):'<div class="empty-state">No captured errors.</div>';
-  document.querySelectorAll('[data-error]').forEach(function(b){
-    b.onclick=function(){var parts=b.dataset.error.split('|');withLoading(function(){return openError(parts[0],parts[1]);});};
-  });
-}
-
-// ── COPY STATE ──
-function logCopyState(logId){return (copyCache.get('log:'+logId)||{}).status||'missing';}
-function logCopyLabel(logId){var s=logCopyState(logId);if(s==='loading')return 'Preparing...';if(s==='error')return 'Retry prepare';return 'Copy for AI';}
-
-// ── RENDER LOGS ──
-function renderLogs(target,rows){
-  if(target==='logs'){
-    renderSortableTable(target,'logs',[{key:'timestamp',label:'Time',render:function(r){return fmtTs(r.timestamp);}},{key:'level',label:'Level'},{key:'service_name',label:'Service'},{key:'message',label:'Message',render:function(r){return String(r.message||'').slice(0,120);}},{key:'logger_name',label:'Logger'}],rows,'No logs found');
-    document.querySelectorAll('#logs tbody tr').forEach(function(tr){tr.style.cursor='pointer';tr.onclick=function(){withLoading(function(){return openLog(sortRows(rows,'logs')[Number(tr.dataset.rowIndex||0)]);});};});
-    return;
-  }
-  $(target).innerHTML=rows.length?rows.map(function(l){
-    var state=logCopyState(l.id);
-    var level=l.level||'LOG';
-    return '<div class="log-item" data-log=\''+esc(JSON.stringify(l))+'\'><div class="log-header"><span class="level-badge level-'+esc(level)+'">'+esc(level)+'</span>'+(l.service_name?'<span class="svc-badge" title="'+esc(l.service_name)+'">'+esc(l.service_name)+'</span>':'')+'<span class="small" style="margin-left:auto">'+esc(fmtTs(l.timestamp))+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="log-footer"><span class="small mono">'+esc(l.logger_name||'')+(l.trace_id?' &bull; trace '+esc(l.trace_id):'')+'</span><button class="btn" style="font-size:11px;padding:3px 8px" data-copy-log="'+esc(l.id)+'" '+(state==='loading'?'disabled':'')+'>'+logCopyLabel(l.id)+'</button></div></div>';
-  }).join(''):'<div class="empty-state">No logs found</div>';
-  document.querySelectorAll('#'+target+' .log-item').forEach(function(el){el.onclick=function(){withLoading(function(){return openLog(JSON.parse(el.dataset.log));});};});
-  document.querySelectorAll('#'+target+' [data-copy-log]').forEach(function(btn){
-    btn.onclick=async function(ev){ev.preventDefault();ev.stopPropagation();await copyLog(btn.dataset.copyLog,btn);};
-  });
-}
-
-// ── SELECTED TRACE LOGS ──
-function selectedTraceLogs(){
-  if(!routeState)return [];
-  if(!selectedTraceId)return routeState.logs||[];
-  var logs=routeState.logs||[];
-  var exact=logs.filter(function(l){return l.trace_id===selectedTraceId;});
-  if(exact.length)return exact;
-  var trace=(routeState.traces||[]).find(function(t){return t.id===selectedTraceId;});
-  if(!trace||!trace.finished_at)return [];
-  var base=new Date(trace.finished_at).getTime();
-  return logs.filter(function(l){
-    var ts=new Date(l.timestamp||0).getTime();
-    return l.route_id===trace.route_id&&Number.isFinite(ts)&&Math.abs(ts-base)<=15000;
-  });
-}
-
-// ── RENDER TRACE LIST ──
-function renderTraceList(){
-  if(!routeState){
-    $('traceList').innerHTML='<div class="empty-state">Pick an entry point from the sidebar.</div>';
-    $('routeLogs').innerHTML='<div class="empty-state">Route/request logs appear here.</div>';
-    return;
-  }
-  var traces=routeState.traces||[];
-  $('traceList').innerHTML=traces.length?traces.map(function(t){
-    var ok=Number(t.status_code||200)<400;
-    return '<button class="trace-item'+(selectedTraceId===t.id?' active':'')+'" data-trace="'+esc(t.id)+'"><div class="trace-header"><span class="trace-status '+(ok?'ok':'err')+'"></span><div class="trace-info"><span class="trace-code '+(ok?'':'level-ERROR')+'">'+esc(t.status_code||'')+'</span> <span class="trace-route">'+esc(t.route_pattern)+'</span></div><span class="trace-ms">'+Math.round(Number(t.duration_ms||0))+'ms</span></div><div class="trace-meta">'+esc(t.service_name)+' &bull; '+esc(fmtTs(t.finished_at||t.started_at))+' &bull; '+num(t.log_count)+' logs</div></button>';
-  }).join(''):'<div class="empty-state">No request traces for this route yet.</div>';
-  document.querySelectorAll('[data-trace]').forEach(function(b){b.onclick=function(){withLoading(function(){return openTraceMap(b.dataset.trace);});};});
-  renderLogs('routeLogs',selectedTraceLogs());
-}
-
-// ── ROUTE SELECTION ──
-async function selectRoute(routeId){
-  selectedRouteId=routeId;
-  selectedTraceId=null;
-  switchTab('requests');
-  await loadRoute(routeId,true);
-  render();
-}
-async function loadRoute(routeId,openFirst){
-  routeState=await api('/api/routes/'+encodeURIComponent(routeId)+'/requests');
-  var r=routeState.route;
-  if(openFirst&&routeState.traces&&routeState.traces.length)selectedTraceId=routeState.traces[0].id;
-}
-
-// ── LOG WINDOW ──
-function logWindowQuery(){return 'log_window_minutes='+encodeURIComponent(logWindowMinutes)+'&log_limit=1000';}
-function logWindowStartParam(){if(!logWindowMinutes)return '';return new Date(Date.now()-logWindowMinutes*60*1000).toISOString();}
-function syncLogWindowSelect(){var s=$('logWindow');if(s)s.value=String(logWindowMinutes);}
-
-// ── RENDER KPI ──
-function kpi(label,value){return '<div class="kpi-card"><div class="kpi-num">'+num(value)+'</div><div class="kpi-label">'+label+'</div></div>';}
-
-// ── MAIN RENDER ──
-function render(){
-  renderProjects();
-  if(!selectedProject)return;
-  renderApps();
-  renderEntries();
-  var routes=visible(overview.routes||[]);
-  var allLogs=currentLogRows();
-  var errors=visible(overview.recent_errors||[]);
-  var deps=visible(overview.dependencies||[]).map(function(d){return Object.assign({},d,{display:dependencyLabel(d)});});
-  var totalReq=selectedApp==='all'?overview.totals.request_count:routes.reduce(function(a,r){return a+Number(r.call_count||0);},0);
-  // KPIs
-  $('kpis').innerHTML=kpi('Applications',selectedApp==='all'?overview.apps.length:1)+kpi('Requests',totalReq)+kpi('Errors',selectedApp==='all'?overview.totals.exception_count:errors.length)+kpi('Logs',selectedApp==='all'?overview.totals.log_count:allLogs.length)+kpi('Events',overview.totals.event_count);
-  // Tab counts
-  var traces=routeState?routeState.traces||[]:[];
-  $('tabCountRequests').textContent=traces.length;
-  $('tabCountLogs').textContent=allLogs.length;
-  $('tabCountErrors').textContent=errors.length;
-  $('tabCountDeps').textContent=deps.length;
-  // Tab content
-  renderInsights(routes,allLogs,errors,deps);
-  renderSortableTable('routes','routes',[{key:'method',label:'Method'},{key:'route_pattern',label:'Route'},{key:'service_name',label:'Service'},{key:'call_count',label:'Calls'},{key:'error_count',label:'Errors'},{key:'p95_ms',label:'p95 ms',render:function(r){return Math.round(Number(r.p95_ms||0));}},{key:'last_seen',label:'Last seen',render:function(r){return fmtTs(r.last_seen);}}],routes,'No routes yet');
-  renderMix();
-  renderErrors();
-  renderDependencies(deps);
-  renderLogs('logs',allLogs);
-  renderTraceList();
-  wireSortTables();
-  // Sync log source select
-  var ls=$('logSource');if(ls)ls.value=logSource;
-}
-
-// ── REFRESH ──
-function refreshLabel(){return refreshMs===0?'manual refresh':'live refresh every '+refreshMs/1000+'s';}
-function setRefreshIntervalMs(ms){
-  refreshMs=Number(ms);
-  if(refreshTimer)clearInterval(refreshTimer);
-  refreshTimer=null;
-  $('liveDot').classList.toggle('livePulse',refreshMs!==0);
-  $('liveText').textContent=refreshLabel();
-  if(refreshMs>0)refreshTimer=setInterval(refresh,refreshMs);
-}
-async function setHidden(kind,id,appId,hidden){
-  if(hidden){
-    await api('/api/preferences/hidden',{method:'POST',body:JSON.stringify({target_kind:kind,target_id:id,app_id:appId})});
-    if(kind==='route'&&selectedRouteId===id){selectedRouteId=null;selectedTraceId=null;routeState=null;}
-  }else{
-    await api('/api/preferences/hidden/'+encodeURIComponent(kind)+'/'+encodeURIComponent(id)+(appId?'?app_id='+encodeURIComponent(appId):''),{method:'DELETE'});
+/* ───────────────────────────  HIDDEN PREFS  ─────────────────────────── */
+async function setHidden(kind, id, appId, hidden){
+  if (hidden){
+    await api("/api/preferences/hidden", {method:"POST", body: JSON.stringify({target_kind:kind, target_id:id, app_id:appId})});
+    if (kind === "route" && S.selectedRouteId === id){ S.selectedRouteId = null; S.selectedTraceId = null; S.routeState = null; }
+  } else {
+    await api("/api/preferences/hidden/" + encodeURIComponent(kind) + "/" + encodeURIComponent(id) + (appId ? "?app_id=" + encodeURIComponent(appId) : ""), {method:"DELETE"});
   }
   await refresh();
 }
-async function refresh(){
-  if(isRefreshing)return;
-  isRefreshing=true;
-  try{
-    var scope=selectedProject?'&project_name='+encodeURIComponent(selectedProject):'';
-    var appScope=selectedApp&&selectedApp!=='all'?'&app_id='+encodeURIComponent(selectedApp):'';
-    var results=await Promise.all([
-      api('/api/overview?'+logWindowQuery()),
-      api('/api/projects'),
-      api('/api/entrypoints?include_hidden=true'),
-      api('/api/preferences/hidden'),
-      api('/api/errors/summary?log_window_minutes='+encodeURIComponent(logWindowMinutes)+scope+appScope),
-      api('/api/errors/clusters?limit=100'+scope+appScope),
-      api('/api/errors/timeline?window_minutes=1440&bucket_minutes=60'+scope+appScope),
-      api('/api/metrics/timeseries?window_minutes=1440&bucket_minutes=60'+scope+appScope)
-    ]);
-    overview=results[0];projects=results[1];entries=results[2];hiddenPrefs=results[3];errorSummary=results[4];errorClusters=results[5];errorTimeline=results[6];metricsSeries=results[7];
-    if(selectedProject&&!projects.some(function(p){return p.project_name===selectedProject;})){selectedProject='';}
-    $('liveText').textContent=refreshLabel()+' &bull; logs '+(logWindowMinutes?'last '+logWindowMinutes+'m':'all retained')+' &bull; updated '+new Date().toLocaleTimeString();
-    if(selectedRouteId)await loadRoute(selectedRouteId,false);
-    render();
-    syncLogWindowSelect();
-  }catch(err){
-    $('liveText').textContent='telemetry refresh failed';
-    console.error(err);
-  }finally{
-    isRefreshing=false;
+
+/* ───────────────────────────  ROUTES / TRACES  ─────────────────────────── */
+async function selectRoute(routeId){
+  S.selectedRouteId = routeId;
+  S.selectedTraceId = null;
+  goto("traces");
+  await withLoading(function(){ return loadRoute(routeId, true); });
+  render();
+}
+async function loadRoute(routeId, openFirst){
+  S.routeState = await api("/api/routes/" + encodeURIComponent(routeId) + "/requests");
+  if (openFirst && S.routeState.traces && S.routeState.traces.length){
+    S.selectedTraceId = S.routeState.traces[0].id;
+    await loadTrace(S.selectedTraceId);
   }
 }
-
-// ── SEARCH LOGS ──
-async function searchLogs(){
-  var q=encodeURIComponent($('logSearch').value);
-  var level=encodeURIComponent($('level').value);
-  var start=encodeURIComponent(logWindowStartParam());
-  var rows=await api('/api/logs?text='+q+'&level='+level+'&start='+start+'&limit=1000');
-  renderLogs('logs',filterLogSource(visible(rows)));
+async function selectTrace(traceId){
+  S.selectedTraceId = traceId;
+  S.waterfallTab = "all";
+  await withLoading(function(){ return loadTrace(traceId); });
+  render();
+}
+async function loadTrace(traceId){
+  S.traceMap = await api("/api/traces/" + encodeURIComponent(traceId) + "/map?slim=true");
 }
 
-// ── DRAWER ──
-function openDrawer(){
-  $('drawer').classList.add('open');
-  $('drawerOverlay').classList.add('open');
+/* ───────────────────────────  AGENT COPY  ─────────────────────────── */
+function copyKey(kind, id){ return kind + ":" + id; }
+function copyStatus(kind, id){ var s = S.copyCache.get(copyKey(kind, id)); return s ? s.status : "missing"; }
+function copyLabel(kind, id, ready){
+  var s = copyStatus(kind, id);
+  if (s === "loading") return "PREPARING…";
+  if (s === "error") return "RETRY";
+  return ready || "COPY FOR AI";
+}
+async function prepareAndCopy(kind, id, path, label){
+  var key = copyKey(kind, id);
+  var existing = S.copyCache.get(key);
+  if (!existing || existing.status === "error"){
+    S.copyCache.set(key, {status:"loading"});
+    try {
+      var data = await api(path);
+      S.copyCache.set(key, {status:"ready", text: data.text});
+      try { await navigator.clipboard.writeText(data.text); flashStatus("✓ COPIED " + label); }
+      catch(e){ flashStatus("CLIPBOARD BLOCKED — see drawer", true); openManualCopy(data.text); }
+    } catch(err){
+      S.copyCache.set(key, {status:"error"});
+      flashStatus("COPY FAILED", true);
+    }
+  } else if (existing.status === "ready"){
+    try { await navigator.clipboard.writeText(existing.text); flashStatus("✓ COPIED " + label); }
+    catch(e){ flashStatus("CLIPBOARD BLOCKED — see drawer", true); openManualCopy(existing.text); }
+  }
+  render();
+}
+function flashStatus(msg, isErr){
+  var el = $("flashStatus");
+  if (!el){
+    el = document.createElement("div");
+    el.id = "flashStatus";
+    el.style.cssText = "position:fixed;bottom:24px;right:24px;padding:9px 14px;border:1px solid var(--rule-2);background:var(--panel);color:var(--ink);font-size:11px;letter-spacing:.06em;text-transform:uppercase;z-index:80;font-weight:600";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.borderColor = isErr ? "var(--bad)" : "var(--signal)";
+  el.style.color = isErr ? "var(--bad)" : "var(--signal)";
+  el.style.opacity = "1";
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.style.opacity = "0"; el.style.transition = "opacity .4s"; }, 2500);
+}
+function openManualCopy(text){
+  openDrawer({
+    title: "Manual copy",
+    sub: "Browser blocked automatic clipboard. Press Cmd/Ctrl+C with the text selected.",
+    bodyHTML: '<textarea id="manualCopyText" style="width:100%;min-height:60vh;background:var(--bg-2);color:var(--ink);border:1px solid var(--rule-2);padding:12px;font-family:var(--mono);font-size:12px"></textarea>',
+  });
+  var a = $("manualCopyText");
+  a.value = text;
+  a.focus();
+  a.select();
+}
+
+/* ───────────────────────────  DRAWER  ─────────────────────────── */
+function openDrawer(opts){
+  $("drawerTitle").textContent = opts.title || "";
+  $("drawerSub").innerHTML = opts.sub || "";
+  $("drawerBody").innerHTML = opts.bodyHTML || "";
+  $("drawer").classList.add("open");
+  $("drawerOverlay").classList.add("open");
 }
 function closeDrawer(){
-  $('drawer').classList.remove('open');
-  $('drawerOverlay').classList.remove('open');
-}
-function toggleDrawerFullscreen(){
-  $('drawer').classList.toggle('fullscreen');
+  $("drawer").classList.remove("open");
+  $("drawerOverlay").classList.remove("open");
 }
 
-// ── COPY HELPERS ──
-function showCopyStatus(message,isError){
-  var el=$('copyStatus');
-  if(!el){el=document.createElement('span');el.id='copyStatus';el.className='small';$('drawerBody')&&$('drawerBody').prepend(el);}
-  el.textContent=message;
-  el.style.display='inline-flex';
-  el.style.marginLeft='8px';
-  el.style.color=isError?'var(--red)':'var(--green)';
-  if(!isError&&message.startsWith('✓'))setTimeout(function(){el.textContent='';},3500);
-}
-function setCopyButton(btn,text,disabled){
-  if(!btn)return;
-  btn.textContent=text;
-  btn.disabled=!!disabled;
-  btn.style.opacity=disabled?'.7':'1';
-}
-function preparedTextarea(){
-  var area=$('preparedCopyText');
-  if(!area){
-    area=document.createElement('textarea');
-    area.id='preparedCopyText';
-    area.setAttribute('aria-hidden','true');
-    area.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;z-index:-1';
-    document.body.appendChild(area);
+/* ───────────────────────────  RENDER · MAIN  ─────────────────────────── */
+function render(){
+  syncCrumbs();
+  syncWindowControls();
+  syncRailBadges();
+  var shell = document.getElementById("shell");
+  if (!S.selectedProject){
+    shell.classList.add("no-project");
+    document.getElementById("subbar").style.display = "none";
+    document.getElementById("rail").style.display = "none";
+    renderProjects();
+    return;
   }
-  return area;
+  shell.classList.remove("no-project");
+  document.getElementById("subbar").style.display = "flex";
+  document.getElementById("rail").style.display = "flex";
+  applyRailExpanded();
+  var page = S.page || "pulse";
+  if (page === "pulse")    renderPulse();
+  else if (page === "traces")  renderTraces();
+  else if (page === "routes")  renderRoutes();
+  else if (page === "logs")    renderLogs();
+  else if (page === "errors")  renderErrors();
+  else if (page === "deps")    renderDeps();
+  else if (page === "settings") renderSettings();
+  else renderPulse();
 }
-function writeClipboardTextNow(text){
-  var area=preparedTextarea();
-  area.value=text;
-  area.focus();
-  area.select();
-  area.setSelectionRange(0,area.value.length);
-  var ok=document.execCommand('copy');
-  if(!ok)throw new Error('copy command failed');
+function syncCrumbs(){
+  var pv = $("crumbProjectVal"); if (pv) pv.textContent = S.selectedProject || "choose one";
+  var av = $("crumbAppVal"); if (av) av.textContent = S.selectedApp === "all" ? "all" : (appName(S.apps.find(function(a){ return a.id === S.selectedApp; })) || "?");
+  var ac = $("crumbApp"); if (ac) ac.classList.toggle("crumb-disabled", !S.selectedProject);
 }
-function showManualCopy(text){
-  $('drawerTitle').textContent='Manual copy';
-  $('drawerSub').textContent='Automatic clipboard copy was blocked by the browser';
-  $('drawerBody').innerHTML='<div class="explain" style="color:var(--red)">Browser blocked automatic copy. The full AI context is selected below. Press Cmd/Ctrl+C.</div><textarea id="manualCopyText" style="width:100%;min-height:70vh;background:var(--bg-subtle);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px"></textarea>';
-  openDrawer();
-  var area=$('manualCopyText');
-  area.value=text;
-  area.focus();
-  area.select();
-  area.setSelectionRange(0,area.value.length);
+function syncWindowControls(){
+  var w = $("windowSelect"); if (w) w.value = String(S.windowMinutes);
+  var r = $("refreshSelect"); if (r) r.value = String(S.refreshMs);
+  var sh = $("hiddenToggle"); if (sh) sh.classList.toggle("active", S.showHidden);
 }
-function updateLogCopyButtons(logId){
-  document.querySelectorAll('[data-copy-log="'+CSS.escape(logId)+'"]').forEach(function(btn){
-    var state=logCopyState(logId);
-    btn.disabled=state==='loading';
-    btn.textContent=logCopyLabel(logId);
+function syncRailBadges(){
+  var errs = inScope(S.errorClusters || []).reduce(function(a, c){ return a + Number(c.count || 0); }, 0);
+  var b = $("railErrBadge");
+  if (errs > 0){ b.classList.remove("hidden"); b.textContent = errs > 99 ? "99+" : String(errs); }
+  else b.classList.add("hidden");
+}
+
+/* ───────────────────────────  RENDER · PROJECTS HOME  ─────────────────────────── */
+function renderProjects(){
+  var cards = S.projects.map(function(p){
+    return '<div class="proj-card" data-project="' + esc(p.project_name) + '">' +
+      '<div class="proj-name"><span>' + esc(p.project_name) + '</span><span class="chip ' + (p.error_count > 0 ? "bad" : (p.request_count > 0 ? "good" : "dim")) + '">' + (p.error_count > 0 ? p.error_count + " err" : (p.request_count > 0 ? "live" : "idle")) + '</span></div>' +
+      '<div class="proj-stats">' +
+        '<div class="ps"><span class="num">' + num(p.app_count) + '</span><span class="lbl">apps</span></div>' +
+        '<div class="ps"><span class="num">' + num(p.request_count) + '</span><span class="lbl">requests</span></div>' +
+        '<div class="ps"><span class="num">' + num(p.api_key_count) + '</span><span class="lbl">sdk keys</span></div>' +
+      '</div>' +
+      '<div class="proj-meta"><span>created · ' + esc(fmtTs(p.created_at)) + '</span><span>last seen · ' + esc(fmtRel(p.last_seen)) + '</span></div>' +
+      '<div class="proj-actions" onclick="event.stopPropagation()">' +
+        '<button class="btn btn-primary btn-sm" data-open="' + esc(p.project_name) + '">OPEN →</button>' +
+        '<button class="btn btn-sm" data-genkey="' + esc(p.project_name) + '">+ SDK KEY</button>' +
+        '<button class="btn btn-sm" data-keys="' + esc(p.project_name) + '">KEYS</button>' +
+        '<button class="btn btn-sm btn-danger" data-delproj="' + esc(p.project_name) + '">DELETE</button>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+  if (!S.projects.length){
+    cards = '<div class="empty" style="grid-column:1/-1"><div class="ico">∅</div><p>No projects yet. Create an SDK key for your first project, configure the SDK with that key, then exercise your app.</p><button class="btn btn-primary" id="firstKey">+ CREATE FIRST PROJECT</button></div>';
+  }
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Projects</div><div class="page-sub">Choose a project to inspect its telemetry</div></div>' +
+        '<div class="page-actions"><button class="btn btn-primary" id="newProj">+ NEW PROJECT</button></div>' +
+      '</div>' +
+      '<div class="page-body"><div class="proj-grid">' + cards + '</div></div>' +
+    '</div>';
+  document.querySelectorAll(".proj-card").forEach(function(c){ c.onclick = function(){ selectProject(c.dataset.project); }; });
+  document.querySelectorAll("[data-open]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); selectProject(b.dataset.open); }; });
+  document.querySelectorAll("[data-genkey]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return createProjectKey(b.dataset.genkey); }); }; });
+  document.querySelectorAll("[data-keys]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return showProjectKeys(b.dataset.keys); }); }; });
+  document.querySelectorAll("[data-delproj]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); withLoading(function(){ return deleteProject(b.dataset.delproj); }); }; });
+  var np = $("newProj"); if (np) np.onclick = function(){ var name = prompt("Project name", "default"); if (name) withLoading(function(){ return createProjectKey(name); }); };
+  var fk = $("firstKey"); if (fk) fk.onclick = function(){ var name = prompt("Project name", "default"); if (name) withLoading(function(){ return createProjectKey(name); }); };
+}
+
+/* ───────────────────────────  RENDER · PULSE  ─────────────────────────── */
+function renderPulse(){
+  var routes = inScope(S.routes || []);
+  var errors = inScope(S.errorClusters || []);
+  var deps = inScope(S.deps || []);
+  var apps = scopedApps();
+  var totalReq = S.selectedApp === "all" ? Number(S.totals.request_count || 0) : routes.reduce(function(a,r){ return a + Number(r.call_count||0); }, 0);
+  var totalErr = errors.reduce(function(a,c){ return a + Number(c.count||0); }, 0);
+  var seriesReq = (S.metricsSeries || []).reduce(function(a,b){ return a + Number(b.requests||0); }, 0);
+  var seriesErr = (S.metricsSeries || []).reduce(function(a,b){ return a + Number(b.request_errors||0); }, 0);
+  var p95Vals = routes.filter(function(r){ return Number(r.p95_ms||0) > 0; }).map(function(r){ return Number(r.p95_ms); });
+  var p95Max = p95Vals.length ? Math.round(Math.max.apply(null, p95Vals)) : 0;
+  var p50Avg = routes.length ? Math.round(routes.reduce(function(a,r){ return a + Number(r.p50_ms||0); }, 0) / routes.length) : 0;
+  var errRate = totalReq > 0 ? (totalErr / totalReq * 100) : 0;
+  var slow = routes.slice().filter(function(r){ return r.call_count > 0; }).sort(function(a,b){ return Number(b.p95_ms||0) - Number(a.p95_ms||0); }).slice(0, 5);
+  var loudest = topServicesByLogs(8);
+  var attentionRows = buildAttention(routes, errors, loudest);
+
+  var vitalsHTML =
+    '<div class="vitals">' +
+      vital("REQ", num(totalReq), fmtWindow(), seriesReq, "req") +
+      vital("P50", fmtMs(p50Avg), "avg across routes", null) +
+      vital("P95", fmtMs(p95Max), "worst route p95", null) +
+      vital("ERR", fmtPct(errRate), num(totalErr) + " errors", seriesErr, "err", totalErr > 0 ? (errRate > 1 ? "alert" : "warn") : "") +
+      vital("DEPS", num(deps.length), num(deps.reduce(function(a,d){ return a + Number(d.call_count||0); }, 0)) + " calls", null) +
+      vital("APPS", num(apps.length), apps.map(function(a){ return appName(a); }).slice(0,3).join(" · ") || "—", null) +
+    '</div>';
+
+  var attentionHTML = attentionRows.length
+    ? '<div class="stream">' + attentionRows.map(function(r){
+        return '<div class="stream-row" data-attn=\'' + esc(JSON.stringify(r)) + '\'>' +
+          '<span class="chip ' + r.chipClass + '">' + esc(r.chip) + '</span>' +
+          '<span class="when">' + esc(r.when) + '</span>' +
+          '<span class="what">' + r.what + '</span>' +
+          '<span class="meta">' + esc(r.meta) + '</span>' +
+        '</div>';
+      }).join("") + '</div>'
+    : '<div class="empty" style="margin:14px"><div class="ico">▰</div><p>All clear. No errors, slow routes, or hot loops in the current window.</p></div>';
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Pulse</div><div class="page-sub">' + esc(S.selectedProject) + (S.selectedApp !== "all" ? " · " + esc(appName(S.apps.find(function(a){ return a.id === S.selectedApp; })) || "") : "") + ' · ' + fmtWindow() + '</div></div>' +
+      '</div>' +
+      '<div class="page-body">' +
+        vitalsHTML +
+        '<div class="panel"><div class="panel-head"><span class="panel-title">▰ Activity timeline</span><span class="panel-meta">' + (S.metricsSeries || []).length + ' buckets · ' + bucketSize() + 'm</span></div><div class="panel-body" id="timelineBody"></div></div>' +
+        '<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px">' +
+          '<div class="panel" style="margin-bottom:0"><div class="panel-head"><span class="panel-title">▸ Attention</span><span class="panel-meta">' + attentionRows.length + ' items</span></div><div class="panel-body no-pad" id="attentionBody">' + attentionHTML + '</div></div>' +
+          '<div class="panel" style="margin-bottom:0"><div class="panel-head"><span class="panel-title">▰ Slowest routes</span></div><div class="panel-body no-pad" id="slowestBody"></div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  drawTimeline($("timelineBody"));
+  $("slowestBody").innerHTML = slow.length ? slow.map(function(r){
+    return '<div class="stream-row" data-route="' + esc(r.id) + '" style="grid-template-columns:48px 1fr auto auto;gap:12px">' +
+      '<span class="method method-' + (["GET","POST","PUT","PATCH","DELETE"].indexOf(r.method) >= 0 ? r.method : "OTHER") + '">' + esc(r.method) + '</span>' +
+      '<span class="what truncate">' + esc(r.route_pattern) + '</span>' +
+      '<span class="meta">' + fmtMs(Number(r.p95_ms||0)) + ' p95</span>' +
+      '<span class="meta dim">' + num(r.call_count) + ' calls</span>' +
+    '</div>';
+  }).join("") : '<div class="empty" style="margin:14px"><p>No route latency data in this window.</p></div>';
+  document.querySelectorAll("[data-route]").forEach(function(el){ el.onclick = function(){ withLoading(function(){ return selectRoute(el.dataset.route); }); }; });
+  document.querySelectorAll("[data-attn]").forEach(function(el){
+    el.onclick = function(){
+      var a = JSON.parse(el.dataset.attn);
+      if (a.kind === "error" && a.routeId) withLoading(function(){ return selectRoute(a.routeId); });
+      else if (a.kind === "error" && a.traceId) withLoading(function(){ return openTraceQuick(a.traceId); });
+      else if (a.kind === "slow" && a.routeId) withLoading(function(){ return selectRoute(a.routeId); });
+      else if (a.kind === "noise"){ goto("logs"); }
+    };
   });
 }
-function prepareLogCopyBackground(logId){
-  var key='log:'+logId;
-  if(copyCache.has(key))return;
-  copyCache.set(key,{status:'loading',text:''});
-  api('/api/logs/'+encodeURIComponent(logId)+'/agent-context').then(function(data){
-    copyCache.set(key,{status:'ready',text:data.text});
-    updateLogCopyButtons(logId);
-  }).catch(function(err){
-    console.error(err);
-    copyCache.set(key,{status:'error',text:''});
-    updateLogCopyButtons(logId);
+function vital(label, value, sub, total, kindSpark, mod){
+  var sparkHTML = "";
+  if (kindSpark){
+    var series = (S.metricsSeries || []).slice(-30).map(function(b){
+      return kindSpark === "err" ? Number(b.request_errors||0) + Number(b.error_logs||0) + Number(b.exceptions||0) : Number(b.requests||0);
+    });
+    var max = Math.max(1, Math.max.apply(null, series.length ? series : [1]));
+    sparkHTML = '<div class="v-spark ' + (kindSpark === "err" ? "err" : "") + '">' + series.map(function(v){ return '<span style="height:' + Math.max(2, Math.round(v / max * 18)) + 'px"></span>'; }).join("") + '</div>';
+  }
+  return '<div class="vital ' + (mod || "") + '">' +
+    '<span class="v-label">' + esc(label) + '</span>' +
+    '<span class="v-num">' + esc(value) + '</span>' +
+    '<span class="v-sub">' + esc(sub) + '</span>' +
+    sparkHTML +
+  '</div>';
+}
+function topServicesByLogs(n){
+  var m = {};
+  inScope(S.recentLogs || []).forEach(function(l){ var k = l.service_name || "unknown"; m[k] = (m[k]||0) + 1; });
+  return Object.keys(m).map(function(k){ return {service:k, count:m[k]}; }).sort(function(a,b){ return b.count - a.count; }).slice(0, n);
+}
+function buildAttention(routes, errors, loudest){
+  var rows = [];
+  errors.slice(0, 5).forEach(function(c){
+    rows.push({
+      kind:"error",
+      chip:"ERROR",
+      chipClass:"bad",
+      when: fmtRel(c.last_seen),
+      what: '<b>' + esc(c.type) + '</b> <span class="dim">·</span> ' + esc(String(c.normalized_message || "").slice(0, 80)),
+      meta: (c.method ? c.method + " " + (c.route_pattern || "") + " · " : "") + c.count + "×",
+      routeId: c.route_id || null,
+      traceId: c.sample_trace_id || null,
+    });
+  });
+  routes.slice().filter(function(r){ return r.call_count > 0 && Number(r.p95_ms||0) > 500; }).sort(function(a,b){ return Number(b.p95_ms||0) - Number(a.p95_ms||0); }).slice(0, 3).forEach(function(r){
+    rows.push({
+      kind:"slow",
+      chip:"SLOW",
+      chipClass:"warn",
+      when: fmtRel(r.last_seen),
+      what: '<span class="method method-' + (["GET","POST","PUT","PATCH","DELETE"].indexOf(r.method) >= 0 ? r.method : "OTHER") + '">' + esc(r.method) + '</span> ' + esc(r.route_pattern),
+      meta: fmtMs(Number(r.p95_ms||0)) + " p95 · " + num(r.call_count) + " calls",
+      routeId: r.id,
+    });
+  });
+  if (loudest[0] && loudest[0].count > 1000){
+    rows.push({
+      kind:"noise",
+      chip:"NOISE",
+      chipClass:"info",
+      when: fmtWindow(),
+      what: '<b>' + esc(loudest[0].service) + '</b> is the loudest service',
+      meta: num(loudest[0].count) + " logs",
+    });
+  }
+  return rows;
+}
+
+/* ───────────────────────────  TIMELINE CHART  ─────────────────────────── */
+function drawTimeline(container){
+  var s = S.metricsSeries || [];
+  if (!s.length){ container.innerHTML = '<div class="empty"><p>No metrics in this window.</p></div>'; return; }
+  var W = container.clientWidth - 4 || 800;
+  var H = 140;
+  var pad = {l: 36, r: 12, t: 8, b: 22};
+  var iw = W - pad.l - pad.r;
+  var ih = H - pad.t - pad.b;
+  var maxReq = Math.max(1, Math.max.apply(null, s.map(function(b){ return Number(b.requests||0); })));
+  var maxErr = Math.max(1, Math.max.apply(null, s.map(function(b){ return Number(b.request_errors||0) + Number(b.error_logs||0) + Number(b.exceptions||0); })));
+  var max = Math.max(maxReq, maxErr);
+  function x(i){ return pad.l + (s.length === 1 ? iw/2 : (i / (s.length - 1)) * iw); }
+  function y(v){ return pad.t + ih - (v / max) * ih; }
+  function path(getVal){
+    var pts = s.map(function(b, i){ return x(i) + "," + y(getVal(b)); });
+    return "M" + pts.join(" L");
+  }
+  function area(getVal){
+    var p = path(getVal);
+    return p + " L" + x(s.length-1) + "," + y(0) + " L" + x(0) + "," + y(0) + " Z";
+  }
+  var grids = [0.25, 0.5, 0.75, 1].map(function(f){ var yy = pad.t + ih - f * ih; return '<line class="grid" x1="' + pad.l + '" x2="' + (W - pad.r) + '" y1="' + yy + '" y2="' + yy + '"/>' + '<text class="axis-text" x="' + (pad.l - 6) + '" y="' + (yy + 3) + '" text-anchor="end">' + Math.round(f * max) + '</text>'; }).join("");
+  var ticks = s.map(function(b, i){ if (i % Math.max(1, Math.floor(s.length/6)) !== 0) return ""; return '<text class="axis-text" x="' + x(i) + '" y="' + (H - 4) + '" text-anchor="middle">' + fmtTime(b.bucket) + '</text>'; }).join("");
+  container.innerHTML =
+    '<div class="timeline" style="padding:0;border:0"><svg class="timeline-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+      grids +
+      '<path class="area-req" d="' + area(function(b){ return Number(b.requests||0); }) + '"/>' +
+      '<path class="line-req" d="' + path(function(b){ return Number(b.requests||0); }) + '"/>' +
+      '<path class="area-err" d="' + area(function(b){ return Number(b.request_errors||0) + Number(b.error_logs||0) + Number(b.exceptions||0); }) + '"/>' +
+      '<path class="line-err" d="' + path(function(b){ return Number(b.request_errors||0) + Number(b.error_logs||0) + Number(b.exceptions||0); }) + '"/>' +
+      ticks +
+    '</svg><div class="timeline-legend"><span><span class="sw" style="background:var(--signal)"></span>requests</span><span><span class="sw" style="background:var(--bad)"></span>errors</span></div></div>';
+}
+
+/* ───────────────────────────  RENDER · TRACES  ─────────────────────────── */
+function tracesRoutesList(){
+  var rows = inScope(S.entries || []).filter(function(r){
+    if (Number(r.call_count||0) === 0 && !S.showHidden) return false;
+    if (!S.showHidden && r.hidden) return false;
+    return true;
+  });
+  var q = (S.tracesRouteSearch || "").toLowerCase();
+  if (q){
+    rows = rows.filter(function(r){
+      return ((r.route_pattern || "") + " " + (r.method || "") + " " + (r.service_name || "")).toLowerCase().includes(q);
+    });
+  }
+  rows.sort(function(a,b){ return Number(b.call_count||0) - Number(a.call_count||0); });
+  return rows;
+}
+function tracesCallsList(){
+  var traces = ((S.routeState && S.routeState.traces) || []).slice();
+  var q = (S.tracesCallSearch || "").toLowerCase();
+  if (q){
+    traces = traces.filter(function(t){
+      var status = String(t.status_code || "");
+      return (status + " " + (t.method||"") + " " + (t.route_pattern||"") + " " + (t.service_name||"") + " " + (t.id||"")).toLowerCase().includes(q);
+    });
+  }
+  return traces;
+}
+function paginateRows(rows, page, size){
+  size = size || 25;
+  var total = rows.length;
+  var pages = Math.max(1, Math.ceil(total/size));
+  page = Math.min(Math.max(1, page||1), pages);
+  var start = (page-1)*size;
+  return { items: rows.slice(start, start+size), page: page, pages: pages, total: total, start: start, size: size };
+}
+function tracesPagerHTML(p, kind){
+  var label = p.total === 0 ? '0 of 0' : ((p.start+1) + '–' + Math.min(p.start+p.size, p.total) + ' of ' + p.total);
+  return '<div class="t-side-pager">' +
+    '<button class="t-pager-btn" data-pager="' + kind + '" data-dir="prev" ' + (p.page <= 1 ? 'disabled' : '') + '>‹</button>' +
+    '<span class="t-pager-info">' + label + '</span>' +
+    '<button class="t-pager-btn" data-pager="' + kind + '" data-dir="next" ' + (p.page >= p.pages ? 'disabled' : '') + '>›</button>' +
+    '</div>';
+}
+function renderTraces(){
+  var routes = tracesRoutesList();
+  if (!S.selectedRouteId && routes.length){
+    S.selectedRouteId = routes[0].id;
+    withLoading(function(){ return loadRoute(S.selectedRouteId, true); }).then(render);
+  }
+  var routePager = paginateRows(routes, S.tracesRoutePage, S.tracesPageSize);
+  var routeListHTML = routePager.items.length ? routePager.items.map(function(r){
+    var isActive = r.id === S.selectedRouteId;
+    var m = ["GET","POST","PUT","PATCH","DELETE"].indexOf(r.method) >= 0 ? r.method : "OTHER";
+    return '<div class="t-side-row ' + (isActive ? "active" : "") + '" data-route="' + esc(r.id) + '">' +
+      '<div class="t-side-row-line"><span class="method method-' + m + '">' + esc(r.method) + '</span><span class="truncate">' + esc(r.route_pattern) + '</span></div>' +
+      '<div class="t-side-row-meta"><span class="truncate">' + esc(r.service_name || "—") + '</span><span>' + num(r.call_count) + '</span></div>' +
+    '</div>';
+  }).join("") : '<div class="empty" style="margin:14px"><p>' + (S.tracesRouteSearch ? "No routes match." : "No routes with traffic yet.") + '</p></div>';
+
+  var calls = tracesCallsList();
+  var callPager = paginateRows(calls, S.tracesCallPage, S.tracesPageSize);
+  var callListHTML = callPager.items.length ? callPager.items.map(function(t){
+    var ok = Number(t.status_code || 200) < 400;
+    var isActive = t.id === S.selectedTraceId;
+    var m = ["GET","POST","PUT","PATCH","DELETE"].indexOf(t.method || "GET") >= 0 ? (t.method || "GET") : "OTHER";
+    return '<div class="trace-row ' + (isActive ? "active" : "") + '" data-trace="' + esc(t.id) + '">' +
+      '<div class="status ' + (ok ? "ok" : "err") + '">' + esc(t.status_code || "—") + '</div>' +
+      '<div>' +
+        '<div class="route"><span class="method method-' + m + '">' + esc(t.method || "GET") + '</span>' + esc(t.route_pattern) + '</div>' +
+        '<div class="meta">' + esc(t.service_name || "") + ' · ' + esc(fmtRel(t.finished_at || t.started_at)) + ' · ' + num(t.log_count || 0) + ' logs</div>' +
+      '</div>' +
+      '<div class="dur">' + fmtMs(Number(t.duration_ms || 0)) + '</div>' +
+    '</div>';
+  }).join("") : '<div class="empty" style="margin:14px"><div class="ico">∅</div><p>' + (S.selectedRouteId ? (S.tracesCallSearch ? "No calls match." : "No traces for this route yet.") : "Pick a route on the left to see its calls.") + '</p></div>';
+
+  var routesCollapsed = !!S.tracesRoutesCollapsed;
+  var callsCollapsed = !!S.tracesCallsCollapsed;
+
+  function routesColumnHTML(){
+    if (routesCollapsed){
+      return '<div class="t-collapsed-rail" data-collapse-toggle="routes" title="Expand routes">' +
+        '<span class="t-collapsed-ico">»</span>' +
+        '<span class="t-collapsed-label">Routes</span>' +
+        '<span class="t-collapsed-count">' + num(routes.length) + '</span>' +
+      '</div>';
+    }
+    return '<div class="t-side-head">' +
+        '<input class="t-side-search" id="tracesRouteSearch" placeholder="search routes" value="' + esc(S.tracesRouteSearch || "") + '">' +
+        '<button class="t-collapse-btn" data-collapse-toggle="routes" title="Collapse routes">‹</button>' +
+      '</div>' +
+      '<div class="t-side-list">' + routeListHTML + '</div>' +
+      tracesPagerHTML(routePager, "routes");
+  }
+  function callsColumnHTML(){
+    if (callsCollapsed){
+      return '<div class="t-collapsed-rail" data-collapse-toggle="calls" title="Expand calls">' +
+        '<span class="t-collapsed-ico">»</span>' +
+        '<span class="t-collapsed-label">Calls</span>' +
+        '<span class="t-collapsed-count">' + num(calls.length) + '</span>' +
+      '</div>';
+    }
+    return '<div class="t-side-head">' +
+        '<input class="t-side-search" id="tracesCallSearch" placeholder="search calls" value="' + esc(S.tracesCallSearch || "") + '"' + (S.selectedRouteId ? '' : ' disabled') + '>' +
+        '<button class="t-collapse-btn" data-collapse-toggle="calls" title="Collapse calls">‹</button>' +
+      '</div>' +
+      '<div class="t-side-list" id="traceListCol">' + callListHTML + '</div>' +
+      tracesPagerHTML(callPager, "calls");
+  }
+
+  var splitClasses = "split t-list-3col" + (routesCollapsed ? " r-collapsed" : "") + (callsCollapsed ? " c-collapsed" : "");
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Traces</div><div class="page-sub">' + (S.selectedRouteId && S.routeState && S.routeState.route ? esc(S.routeState.route.method + " " + S.routeState.route.route_pattern) : "select a route") + '</div></div>' +
+      '</div>' +
+      '<div class="' + splitClasses + '" style="flex:1;min-height:0">' +
+        '<div class="col t-sidebar">' + routesColumnHTML() + '</div>' +
+        '<div class="col t-sidebar">' + callsColumnHTML() + '</div>' +
+        '<div class="col" id="waterfallCol"></div>' +
+      '</div>' +
+    '</div>';
+
+  document.querySelectorAll("[data-route]").forEach(function(b){ b.onclick = function(){ S.tracesCallSearch = ""; S.tracesCallPage = 1; withLoading(function(){ return selectRoute(b.dataset.route); }); }; });
+  document.querySelectorAll("[data-trace]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return selectTrace(b.dataset.trace); }); }; });
+  document.querySelectorAll("[data-collapse-toggle]").forEach(function(b){
+    b.onclick = function(ev){
+      ev.stopPropagation();
+      var which = b.dataset.collapseToggle;
+      if (which === "routes"){
+        S.tracesRoutesCollapsed = !S.tracesRoutesCollapsed;
+        localStorage.setItem("ro:tracesRoutesCollapsed", S.tracesRoutesCollapsed ? "1" : "0");
+      } else {
+        S.tracesCallsCollapsed = !S.tracesCallsCollapsed;
+        localStorage.setItem("ro:tracesCallsCollapsed", S.tracesCallsCollapsed ? "1" : "0");
+      }
+      renderTraces();
+    };
+  });
+
+  var rs = $("tracesRouteSearch");
+  if (rs){
+    rs.oninput = function(){
+      S.tracesRouteSearch = rs.value;
+      S.tracesRoutePage = 1;
+      renderTraces();
+      var n = $("tracesRouteSearch");
+      if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+  }
+  var cs = $("tracesCallSearch");
+  if (cs){
+    cs.oninput = function(){
+      S.tracesCallSearch = cs.value;
+      S.tracesCallPage = 1;
+      renderTraces();
+      var n = $("tracesCallSearch");
+      if (n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+    };
+  }
+  document.querySelectorAll("[data-pager]").forEach(function(b){
+    b.onclick = function(){
+      var kind = b.dataset.pager;
+      var step = b.dataset.dir === "next" ? 1 : -1;
+      if (kind === "routes") S.tracesRoutePage = Math.max(1, (S.tracesRoutePage || 1) + step);
+      else S.tracesCallPage = Math.max(1, (S.tracesCallPage || 1) + step);
+      renderTraces();
+    };
+  });
+
+  renderWaterfall();
+}
+function visibleEntries(){
+  return inScope(S.entries || []).filter(function(r){
+    if (Number(r.call_count||0) === 0 && !S.showHidden) return false;
+    if (!S.showHidden && r.hidden) return false;
+    if (!S.searchQuery) return true;
+    return ((r.route_pattern || "") + " " + (r.method || "") + " " + (r.service_name || "")).toLowerCase().includes(S.searchQuery.toLowerCase());
   });
 }
-function prepareCopy(key,path,readyText){
-  readyText=readyText||'Ready to copy';
-  copyCache.set(key,{status:'loading',text:''});
-  return api(path).then(function(data){
-    copyCache.set(key,{status:'ready',text:data.text});
-    preparedTextarea().value=data.text;
-    showCopyStatus(readyText,false);
-    return data.text;
-  }).catch(function(err){
-    console.error(err);
-    copyCache.set(key,{status:'error',text:''});
-    showCopyStatus('Failed to prepare copy context',true);
-    throw err;
+async function openTraceQuick(traceId){
+  S.selectedTraceId = traceId;
+  goto("traces");
+  await loadTrace(traceId);
+  // also try to load the route the trace belongs to
+  if (S.traceMap && S.traceMap.traces && S.traceMap.traces[0]){
+    var rid = S.traceMap.traces[0].route_id;
+    if (rid && (!S.routeState || !S.routeState.route || S.routeState.route.id !== rid)){
+      S.selectedRouteId = rid;
+      await loadRoute(rid, false);
+    }
+  }
+  render();
+}
+
+/* ─────────────  WATERFALL  ───────────── */
+function renderWaterfall(){
+  var col = $("waterfallCol");
+  if (!col) return;
+  if (!S.selectedTraceId || !S.traceMap){
+    col.innerHTML = '<div class="empty" style="margin:14px"><div class="ico">▰</div><p>Pick a trace on the left to see its waterfall.</p></div>';
+    return;
+  }
+  var d = S.traceMap;
+  var rootTrace = (d.traces || [])[0] || {};
+  var spans = collectSpans(d);
+  var t0 = Math.min.apply(null, spans.map(function(s){ return s.t0; }));
+  var t1 = Math.max.apply(null, spans.map(function(s){ return s.t1; }));
+  if (!Number.isFinite(t0)) t0 = 0;
+  if (!Number.isFinite(t1) || t1 <= t0) t1 = t0 + 1;
+  var totalMs = t1 - t0;
+
+  var ticks = [0, 0.25, 0.5, 0.75, 1].map(function(f){ return '<span style="left:' + (f*100) + '%">' + Math.round(f * totalMs) + 'ms</span>'; }).join("");
+
+  var bars = spans.map(function(sp){
+    var leftPct = ((sp.t0 - t0) / totalMs) * 100;
+    var widthPct = Math.max(0.5, ((sp.t1 - sp.t0) / totalMs) * 100);
+    return '<div class="wf-bar">' +
+      '<div class="name"><span class="kind ' + sp.cssKind + '">' + esc(sp.kind) + '</span><span class="truncate">' + esc(sp.name) + '</span></div>' +
+      '<div class="track"><div class="fill ' + sp.cssKind + '" style="left:' + leftPct + '%;width:' + widthPct + '%"></div></div>' +
+      '<div class="dur">' + fmtMs(sp.t1 - sp.t0) + '</div>' +
+    '</div>';
+  }).join("");
+
+  var tabHTML = ["all","spans","deps","logs","raw"].map(function(t){
+    return '<button class="wf-tab ' + (S.waterfallTab === t ? "active" : "") + '" data-wftab="' + t + '">' + t + '</button>';
+  }).join("");
+
+  var bodyHTML = "";
+  if (S.waterfallTab === "all" || S.waterfallTab === "spans"){
+    bodyHTML += '<div class="wf-axis"><span></span><div class="ticks">' + ticks + '</div><span></span></div><div class="wf-bars">' + (bars || '<div class="empty"><p>No spans in this trace.</p></div>') + '</div>';
+  }
+  if (S.waterfallTab === "all" || S.waterfallTab === "deps"){
+    bodyHTML += '<div style="margin-top:14px">' + renderDepDetails(d.dependencies || []) + '</div>';
+  }
+  if (S.waterfallTab === "all" || S.waterfallTab === "logs"){
+    var flowLogs = d.flow_logs || d.logs || [];
+    var bg = d.nearby_background_logs || [];
+    bodyHTML += '<div class="panel" style="margin-top:14px"><div class="panel-head"><span class="panel-title">▸ Exact flow logs</span><span class="panel-meta">' + flowLogs.length + ' lines</span></div><div class="panel-body no-pad">' + renderLogStream(flowLogs) + '</div></div>';
+    if (bg.length){
+      bodyHTML += '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Nearby background logs</span><span class="panel-meta">' + bg.length + ' lines</span></div><div class="panel-body no-pad">' + renderLogStream(bg.slice(0, 80)) + '</div></div>';
+    }
+  }
+  if (S.waterfallTab === "raw"){
+    bodyHTML += '<pre>' + esc(pretty(d)) + '</pre>';
+  }
+
+  var ok = Number(rootTrace.status_code || 200) < 400;
+  col.innerHTML =
+    '<div class="waterfall">' +
+      '<div class="wf-head">' +
+        '<div class="wf-title"><span class="chip ' + (ok ? "good" : "bad") + '">' + esc(rootTrace.status_code || "—") + '</span><span>' + esc((rootTrace.method || "") + " " + (rootTrace.route_pattern || "")) + '</span></div>' +
+        '<div class="wf-meta">' +
+          '<span class="kv"><span class="k">trace</span><span class="v mono">' + esc(S.selectedTraceId.slice(0, 12)) + '…</span></span>' +
+          '<span class="kv"><span class="k">duration</span><span class="v">' + fmtMs(Number(rootTrace.duration_ms || totalMs)) + '</span></span>' +
+          '<span class="kv"><span class="k">spans</span><span class="v">' + (d.spans || []).length + '</span></span>' +
+          '<span class="kv"><span class="k">deps</span><span class="v">' + (d.dependencies || []).length + '</span></span>' +
+          '<span class="kv"><span class="k">errors</span><span class="v">' + (d.exceptions || []).length + '</span></span>' +
+          '<span class="kv"><span class="k">started</span><span class="v">' + esc(fmtTs(rootTrace.started_at)) + '</span></span>' +
+        '</div>' +
+        '<div class="wf-actions">' +
+          '<button class="btn btn-primary" id="copyTraceBtn">' + copyLabel("trace", S.selectedTraceId, "COPY TRACE FOR AI") + '</button>' +
+          '<button class="btn" id="raw">VIEW RAW</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="wf-tabs">' + tabHTML + '</div>' +
+      bodyHTML +
+    '</div>';
+
+  $("copyTraceBtn").onclick = function(){ prepareAndCopy("trace", S.selectedTraceId, "/api/traces/" + encodeURIComponent(S.selectedTraceId) + "/agent-context", "TRACE"); };
+  $("raw").onclick = function(){ S.waterfallTab = "raw"; renderWaterfall(); };
+  document.querySelectorAll("[data-wftab]").forEach(function(b){ b.onclick = function(){ S.waterfallTab = b.dataset.wftab; renderWaterfall(); }; });
+}
+function collectSpans(d){
+  // Build a sorted list of span-like items with t0/t1 in ms relative to trace start.
+  var spans = [];
+  var allEvents = [].concat(d.spans || [], d.dependencies || [], d.exceptions || []);
+  var t0base = null;
+  allEvents.forEach(function(e){
+    var start = e.started_at || e.timestamp;
+    if (!start) return;
+    var t = new Date(start).getTime();
+    if (Number.isFinite(t) && (t0base == null || t < t0base)) t0base = t;
+  });
+  if (t0base == null) t0base = Date.now();
+  function add(kind, cssKind, name, item){
+    var start = new Date(item.started_at || item.timestamp || t0base).getTime();
+    var dur = Number(item.duration_ms != null ? item.duration_ms : (item.payload && item.payload.duration_ms) || 0);
+    var t0 = isFinite(start) ? start - t0base : 0;
+    spans.push({kind: kind, cssKind: cssKind, name: name, t0: t0, t1: t0 + dur});
+  }
+  // root trace as the first bar
+  (d.traces || []).forEach(function(t){
+    add("ROUTE", "http", (t.method || "") + " " + (t.route_pattern || ""), {started_at: t.started_at, duration_ms: t.duration_ms});
+  });
+  (d.spans || []).filter(function(s){ return s.kind === "function"; }).forEach(function(s){
+    add("fn", "span", s.name || "fn", s);
+  });
+  (d.dependencies || []).forEach(function(dep){
+    var p = (function(){ try { return JSON.parse(dep.payload_json || "{}"); } catch(e){ return {}; } })();
+    var name = p.target || p.host || p.database || p.model || p.operation || dep.kind || "dependency";
+    var k = dep.kind === "db_query" ? "db" : dep.kind === "http_client_call" ? "http" : (dep.kind || "").includes("llm") ? "llm" : "span";
+    add(k.toUpperCase(), k, name, {started_at: dep.timestamp, duration_ms: p.duration_ms || 0});
+  });
+  (d.exceptions || []).forEach(function(e){
+    add("ERR", "error", e.type + ": " + (e.normalized_message || "").slice(0, 60), {started_at: e.last_seen, duration_ms: 4});
+  });
+  spans.sort(function(a,b){ return a.t0 - b.t0; });
+  return spans.length ? spans : [{kind:"NONE", cssKind:"span", name:"(no spans)", t0:0, t1:1}];
+}
+function renderDepDetails(deps){
+  if (!deps || !deps.length) return '<div class="empty"><p>No dependency calls in this trace.</p></div>';
+  var rows = deps.map(function(d){
+    var p = (function(){ try { return JSON.parse(d.payload_json || "{}"); } catch(e){ return {}; } })();
+    var target = p.target || p.host || p.database || p.model || (Array.isArray(p.tables) ? p.tables.join(", ") : "");
+    var op = p.rendered_statement || p.statement_template || p.operation || p.method || "";
+    var kind = d.kind === "db_query" ? "db" : d.kind === "http_client_call" ? "http" : "span";
+    return '<tr><td><span class="chip ' + (kind==="db" ? "good" : kind==="http" ? "info" : "dim") + '">' + esc(d.kind || "dep") + '</span></td><td class="truncate">' + esc(target) + '</td><td class="truncate dim">' + esc(String(op).slice(0, 240)) + '</td><td class="num">' + (p.duration_ms ? Math.round(p.duration_ms) + "ms" : "—") + '</td></tr>';
+  }).join("");
+  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Dependency details</span></div><div class="panel-body no-pad"><table class="tbl"><thead><tr><th>kind</th><th>target</th><th>operation</th><th class="num">ms</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+function renderLogStream(logs){
+  if (!logs || !logs.length) return '<div class="empty"><p>No logs.</p></div>';
+  return logs.map(function(l){
+    return '<div class="log-row" data-logid="' + esc(l.id || "") + '" data-log=\'' + esc(JSON.stringify({id:l.id, trace_id:l.trace_id})) + '\'>' +
+      '<span class="ts">' + esc(fmtTs(l.timestamp)) + '</span>' +
+      '<span class="lvl ' + esc(l.level || "INFO") + '">' + esc(l.level || "LOG") + '</span>' +
+      '<span class="svc truncate">' + esc(l.service_name || "") + '</span>' +
+      '<span class="msg">' + esc(l.message || "") + (l.logger_name ? '<div class="lname">' + esc(l.logger_name) + '</div>' : "") + '</span>' +
+    '</div>';
+  }).join("");
+}
+
+/* ───────────────────────────  RENDER · ROUTES  ─────────────────────────── */
+var ROUTE_COLUMNS = {
+  method:    { get: function(r){ return r.method || "GET"; }, numeric: false },
+  route:     { get: function(r){ return r.route_pattern || ""; }, numeric: false },
+  service:   { get: function(r){ return r.service_name || ""; }, numeric: false },
+  calls:     { get: function(r){ return Number(r.call_count||0); }, numeric: true },
+  errors:    { get: function(r){ return Number(r.error_count||0); }, numeric: true },
+  p50:       { get: function(r){ return Number(r.p50_ms||0); }, numeric: true },
+  p95:       { get: function(r){ return Number(r.p95_ms||0); }, numeric: true },
+  last_seen: { get: function(r){ return r.last_seen || ""; }, numeric: false }
+};
+
+function renderRoutes(){
+  var rows = visibleEntries();
+  var method = S.routesMethodFilter || "";
+  if (method) rows = rows.filter(function(r){
+    var m = r.method || "GET";
+    return method === "OTHER" ? ["GET","POST","PUT","PATCH","DELETE"].indexOf(m) < 0 : m === method;
+  });
+
+  var sorted = sortRows(rows, ROUTE_COLUMNS, S.routesSort);
+  var totalEntries = (S.entries || []).length;
+  var hidden = totalEntries - sorted.length;
+
+  var methods = ["", "GET", "POST", "PUT", "PATCH", "DELETE", "OTHER"];
+  var methodPills = methods.map(function(m){
+    return '<button class="sb-pill ' + (S.routesMethodFilter === m ? "active" : "") + '" data-route-method="' + esc(m) + '">' + (m || "ALL") + '</button>';
+  }).join("");
+  var clearBtn = (method || S.searchQuery) ? '<button class="sb-pill" id="routesClear" title="Clear filters">CLEAR</button>' : "";
+
+  var html = sorted.length ? '<table class="tbl"><thead><tr>' +
+      sortHeader("method",    "method",    "",    S.routesSort, "data-sort-routes") +
+      sortHeader("route",     "route",     "",    S.routesSort, "data-sort-routes") +
+      sortHeader("service",   "service",   "",    S.routesSort, "data-sort-routes") +
+      sortHeader("calls",     "calls",     "num", S.routesSort, "data-sort-routes") +
+      sortHeader("errors",    "errors",    "num", S.routesSort, "data-sort-routes") +
+      sortHeader("p50",       "p50",       "num", S.routesSort, "data-sort-routes") +
+      sortHeader("p95",       "p95",       "num", S.routesSort, "data-sort-routes") +
+      sortHeader("last seen", "last_seen", "",    S.routesSort, "data-sort-routes") +
+      '<th class="num"></th>' +
+    '</tr></thead><tbody>' + sorted.map(function(r){
+      var m = r.method || "GET";
+      var mcls = "method-" + (["GET","POST","PUT","PATCH","DELETE"].indexOf(m) >= 0 ? m : "OTHER");
+      var errRate = r.call_count > 0 ? (Number(r.error_count||0) / Number(r.call_count) * 100) : 0;
+      return '<tr class="row-clickable" data-route="' + esc(r.id) + '">' +
+        '<td><span class="method ' + mcls + '">' + esc(m) + '</span></td>' +
+        '<td class="truncate"><span class="mono">' + esc(r.route_pattern) + '</span>' + (r.hidden ? ' <span class="chip dim">HIDDEN</span>' : '') + '</td>' +
+        '<td class="dim">' + esc(r.service_name || "") + '</td>' +
+        '<td class="num">' + num(r.call_count) + '</td>' +
+        '<td class="num ' + (errRate > 1 ? "txt-bad" : "") + '">' + num(r.error_count) + (errRate > 0 ? ' <span class="dim">(' + errRate.toFixed(1) + '%)</span>' : '') + '</td>' +
+        '<td class="num">' + fmtMs(Number(r.p50_ms||0)) + '</td>' +
+        '<td class="num">' + fmtMs(Number(r.p95_ms||0)) + '</td>' +
+        '<td class="dim">' + esc(fmtRel(r.last_seen)) + '</td>' +
+        '<td><button class="icon-btn" data-hide-route="' + esc(r.id) + '" data-app="' + esc(r.app_id) + '" data-hidden="' + (r.hidden ? "1" : "0") + '" title="' + (r.hidden ? "Restore" : "Hide") + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + (r.hidden ? '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>' : '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13 13 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13 13 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>') + '</svg></button></td>' +
+      '</tr>';
+    }).join("") + '</tbody></table>'
+    : '<div class="empty"><div class="ico">∅</div><p>No routes match your filters yet. Exercise the app and they will appear here.</p></div>';
+
+  var subParts = [sorted.length + ' endpoint' + (sorted.length === 1 ? '' : 's')];
+  if (hidden > 0) subParts.push(hidden + ' filtered');
+  subParts.push('click any row to inspect traces');
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Routes</div><div class="page-sub">' + subParts.join(' · ') + '</div></div>' +
+      '</div>' +
+      '<div class="filter-row wrap" id="routesFilters">' + methodPills + clearBtn + '</div>' +
+      '<div class="page-body" style="padding-top:0"><div class="panel" style="margin-bottom:0">' + html + '</div></div>' +
+    '</div>';
+
+  document.querySelectorAll("[data-route-method]").forEach(function(b){ b.onclick = function(){ S.routesMethodFilter = b.dataset.routeMethod; renderRoutes(); }; });
+  if ($("routesClear")) $("routesClear").onclick = function(){ S.routesMethodFilter = ""; S.searchQuery = ""; var input = $("globalSearch"); if (input) input.value = ""; render(); };
+  document.querySelectorAll("[data-sort-routes]").forEach(function(th){ th.onclick = function(){ toggleSort(S.routesSort, th.dataset.sortRoutes); renderRoutes(); }; });
+  document.querySelectorAll("[data-route]").forEach(function(tr){ tr.onclick = function(ev){ if (ev.target.closest("[data-hide-route]")) return; withLoading(function(){ return selectRoute(tr.dataset.route); }); }; });
+  document.querySelectorAll("[data-hide-route]").forEach(function(b){
+    b.onclick = async function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      await withLoading(function(){ return setHidden("route", b.dataset.hideRoute, b.dataset.app || null, b.dataset.hidden !== "1"); });
+    };
   });
 }
-function copyPrepared(key,successMessage,btn,resetText){
-  var item=copyCache.get(key);
-  if(!item){showCopyStatus('Preparing copy context. Click again when ready.',true);setCopyButton(btn,'Preparing...',true);setTimeout(function(){setCopyButton(btn,resetText,false);},900);return;}
-  if(item.status==='loading'){showCopyStatus('Still preparing copy context — try again in a second',true);setCopyButton(btn,'Preparing...',true);setTimeout(function(){setCopyButton(btn,resetText,false);},900);return;}
-  if(item.status==='error'){showCopyStatus('Copy context failed to prepare',true);setCopyButton(btn,'Copy failed',false);return;}
-  try{
-    writeClipboardTextNow(item.text);
-    showCopyStatus(successMessage,false);
-    setCopyButton(btn,'✓ Copied',false);
-    setTimeout(function(){setCopyButton(btn,resetText,false);},2500);
-  }catch(err){
-    showManualCopy(item.text);
-    setCopyButton(btn,'Manual copy opened',false);
-  }
-}
-async function copyLog(logId,btn){
-  var key='log:'+logId;
-  var existing=copyCache.get(key);
-  if(!existing){prepareLogCopyBackground(logId);setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing log context. The button will enable automatically.',true);return;}
-  if(existing.status==='loading'){setCopyButton(btn,'Preparing...',true);showCopyStatus('Still preparing log context. The button will enable automatically.',true);return;}
-  if(existing.status==='error'){copyCache.delete(key);prepareLogCopyBackground(logId);setCopyButton(btn,'Preparing...',true);showCopyStatus('Retrying log context preparation...',true);return;}
-  copyPrepared(key,'✓ Copied log context for AI agent',btn,'Copy for AI');
-}
-function copyTrace(traceId,btn){
-  var key='trace:'+traceId;
-  if(!copyCache.has(key)){prepareCopy(key,'/api/traces/'+encodeURIComponent(traceId)+'/agent-context','Ready to copy trace context');setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing trace context. Click again when ready.',true);return;}
-  copyPrepared(key,'✓ Copied full trace context for AI agent',btn,'Copy full trace for AI');
-}
-function copyDependency(depId,btn){
-  var key='dep:'+depId;
-  if(!copyCache.has(key)){prepareCopy(key,'/api/dependencies/'+encodeURIComponent(depId)+'/agent-context','Ready to copy dependency context');setCopyButton(btn,'Preparing...',true);showCopyStatus('Preparing dependency context. Click again when ready.',true);return;}
-  copyPrepared(key,'✓ Copied dependency errors/context for AI agent',btn,'Copy dependency errors for AI');
-}
 
-// ── OPEN DEPENDENCY ──
-async function openDependency(dep){
-  var data=await api('/api/dependencies/'+encodeURIComponent(dep.id)+'/context');
-  var sample=dep.last_sample||{};
-  var errorRows=(data.error_samples||[]).map(function(e){
-    return '<div class="log-item"><div class="log-header"><span class="level-badge level-ERROR">ERROR</span><span class="small">'+esc(e.timestamp)+(e.trace_id?' &bull; trace '+esc(e.trace_id):' &bull; no trace')+'</span></div><div class="log-body mono">'+esc(e.payload&&(e.payload.error_type||e.payload.error)||'dependency error')+'</div><div>'+esc((e.payload&&e.payload.error_message)||'')+'</div><pre>'+esc(JSON.stringify(e.payload,null,2))+'</pre>'+(e.trace_id?'<button class="btn" style="margin-top:8px" onclick="openTraceMap(\''+esc(e.trace_id)+'\')">Open trace</button>':'')+'</div>';
-  }).join('');
-  var related=(data.related_logs||[]).map(function(l){
-    return '<div class="log-item"><div class="log-header"><span class="level-badge level-'+esc(l.level)+'">'+esc(l.level||'LOG')+'</span><span class="small">'+esc(l.service_name)+' &bull; '+esc(fmtTs(l.timestamp))+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="small mono">'+esc(l.logger_name||'')+'</div></div>';
-  }).join('');
-  $('drawerTitle').textContent='Dependency context';
-  $('drawerSub').textContent=(dep.service_name||'')+' &bull; '+(dep.call_count||0)+' calls &bull; '+(dep.error_count||0)+' errors';
-  $('drawerBody').innerHTML='<div class="explain">This is an aggregate dependency. The error samples below are the actual failed events that produced the error count.</div><div class="tabs-row"><button class="btn btn-primary" data-copy-dep="'+esc(dep.id)+'">Copy dependency errors for AI</button><span id="copyStatus" class="small copy-ok" style="min-width:200px">Copy context is prepared only when requested.</span>'+(sample.trace_id?'<button class="btn" data-open-trace="'+esc(sample.trace_id)+'">Open latest sample trace</button>':'')+'</div><h3 style="margin:14px 0 8px">Error samples</h3><div>'+(errorRows||'<div class="empty-state">No individual error payloads retained for this dependency yet.</div>')+'</div><h3 style="margin:14px 0 8px">Related logs</h3><div>'+(related||'<div class="empty-state">No nearby logs found.</div>')+'</div><h3 style="margin:14px 0 8px">Aggregate + latest sample</h3><pre>'+esc(pretty(data))+'</pre>';
-  openDrawer();
-}
-
-// ── OPEN LOG ──
-async function openLog(log){
-  if(log.trace_id){await openTraceMap(log.trace_id);return;}
-  $('drawerTitle').textContent='Log record';
-  $('drawerSub').textContent=(log.service_name||'')+' &bull; '+fmtTs(log.timestamp);
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-log="'+esc(log.id)+'">Copy log context for AI</button><span id="copyStatus" class="small copy-ok">Copy context is prepared only when requested.</span></div><div class="explain">This log has no trace id, so only the record and nearby logs are available.</div><pre>'+esc(pretty(log))+'</pre>';
-  openDrawer();
-}
-
-// ── TRACE MAP ──
-function eventPayload(item){try{return JSON.parse(item.payload_json||'{}');}catch(e){return {};}}
-function renderMap(data){
-  var traces=data.traces||[],deps=data.dependencies||[],exceptions=data.exceptions||[],logs=data.logs||[],spans=data.spans||[];
-  var nodes=[];
-  traces.forEach(function(t){nodes.push('<div class="nodeRow"><div class="node route"><div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px">HTTP ROUTE</div><div style="font-size:12px">'+esc(t.service_name)+'</div><div class="mono" style="font-size:12px">'+esc(t.method)+' '+esc(t.route_pattern)+'</div><div class="small">'+Math.round(Number(t.duration_ms||0))+'ms &bull; status '+esc(t.status_code||'')+'</div></div></div>');});
-  spans.filter(function(s){return s.kind==='function';}).slice(0,12).forEach(function(s){nodes.push('<div class="nodeRow"><div class="arrow-line"></div><div class="node"><div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">FUNCTION</div><div class="mono" style="font-size:12px">'+esc(s.name||'handler')+'</div><div class="small">'+Math.round(Number(s.duration_ms||0))+'ms &bull; '+esc(s.status||'')+'</div></div></div>');});
-  logs.slice(0,12).forEach(function(l){nodes.push('<div class="nodeRow"><div class="arrow-line"></div><div class="node"><div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">'+esc(l.source_function||l.logger_name||'LOG')+'</div><div style="font-size:12px">'+esc(l.message).slice(0,140)+'</div><div class="small">'+esc(l.service_name)+' &bull; '+esc(l.level||'LOG')+'</div></div></div>');});
-  deps.slice(0,20).forEach(function(d){
-    var p=eventPayload(d);
-    var tables=Array.isArray(p.tables)?p.tables.join(', '):'';
-    var target=p.target||p.host||p.database||p.model||tables||'dependency';
-    var operation=p.rendered_statement||p.statement_template||p.statement_fingerprint||p.operation||p.method||p.provider||'';
-    var title=d.kind==='db_query'?'DB QUERY':d.kind==='http_client_call'?'HTTP CLIENT':'DEPENDENCY';
-    nodes.push('<div class="nodeRow"><div class="arrow-line"></div><div class="node dep"><div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:4px">'+title+'</div><div style="font-size:12px">'+esc(target)+'</div><div class="small mono">'+esc(operation).slice(0,360)+'</div><div class="small">'+(p.duration_ms?Math.round(Number(p.duration_ms))+'ms':'')+''+(p.row_count!=null?' &bull; rows '+esc(p.row_count):'')+(p.status_code?' &bull; status '+esc(p.status_code):'')+'</div></div></div>');
+/* ───────────────────────────  RENDER · LOGS  ─────────────────────────── */
+function renderLogs(){
+  var levels = ["", "ERROR", "WARNING", "INFO", "DEBUG"];
+  var lvl = S.logLevel || "";
+  var rows = inScope(S.recentLogs || []).filter(function(l){
+    if (lvl && String(l.level || "").toUpperCase() !== lvl) return false;
+    if (S.searchQuery){
+      var q = S.searchQuery.toLowerCase();
+      return (l.message || "").toLowerCase().includes(q) || (l.service_name || "").toLowerCase().includes(q);
+    }
+    return true;
   });
-  exceptions.forEach(function(e){nodes.push('<div class="nodeRow"><div class="arrow-line"></div><div class="node errorNode"><div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">EXCEPTION</div><div style="font-size:12px;font-weight:600">'+esc(e.type)+'</div><div class="small">'+esc(e.normalized_message)+'</div></div></div>');});
-  return '<div class="mapCanvas">'+(nodes.length?nodes.join(''):'<div class="empty-state">No map nodes for this trace yet.</div>')+'</div>';
-}
-function dependencyTarget(p){return p.target||p.host||p.database||p.model||(Array.isArray(p.tables)?p.tables.join(', '):'');}
-function dependencyOperation(p){return p.rendered_statement||p.statement_template||p.statement_fingerprint||p.operation||p.method||p.request_body_preview||p.provider||'';}
-function renderDependencyDetails(deps){
-  var rows=(deps||[]).map(function(d){
-    var p=eventPayload(d), params=p.parameters||p.params||'';
-    return '<tr><td class="col-kind">'+esc(d.kind||'dependency')+'</td><td class="col-target">'+esc(dependencyTarget(p)||'dependency')+'</td><td class="mono">'+esc(dependencyOperation(p))+(params?'<div class="small mono" style="margin-top:6px">params: '+esc(String(params).slice(0,500))+'</div>':'')+'</td><td class="col-ms">'+(p.duration_ms?Math.round(Number(p.duration_ms)):'')+'</td></tr>';
-  }).join('');
-  if(!rows)return '<div class="empty-state">No dependency calls captured for this request.</div>';
-  return '<div class="responsive-table"><table><thead><tr><th class="col-kind">kind</th><th class="col-target">target</th><th>operation / input</th><th class="col-ms">ms</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-}
-function renderRawTimeline(items){
-  items=(items||[]).slice(0,160);
-  return items.map(function(item){var ts=item.timestamp||item.started_at||item.finished_at||'';var kind=item.kind||item.type||'event';return '<details style="margin-bottom:4px"><summary style="cursor:pointer;padding:6px 10px;border-radius:6px 6px 0 0;border:1px solid var(--border);background:var(--surface);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;list-style:none;display:flex;gap:10px;align-items:center"><span style="color:var(--text-subtle);flex:none">'+esc(ts?new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3}):'—')+'</span><span style="color:var(--primary);flex:none">'+esc(kind)+'</span><span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">'+esc(item.message||item.name||item.route_pattern||item.target||item.operation||'')+'</span></summary><pre style="margin:0 0 0;border-radius:0 0 6px 6px;border:1px solid var(--border);border-top:none">'+esc(JSON.stringify(item,null,2))+'</pre></details>';}).join('')||'<div class="empty-state">No timeline events</div>';
-}
-function renderTraceViewToggle(hasGrouped){
-  if(!hasGrouped)return '';
-  return '<div class="tabs-row"><button class="btn btn-primary" data-trace-view="grouped">Grouped map</button><button class="btn" data-trace-view="raw">Raw timeline</button></div>';
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Logs</div><div class="page-sub">' + rows.length + ' · ' + fmtWindow() + '</div></div>' +
+      '</div>' +
+      '<div class="filter-row wrap" id="logFilters">' +
+        levels.map(function(L){ return '<button class="sb-pill ' + (lvl === L ? "active" : "") + '" data-lvl="' + L + '">' + (L || "ALL") + '</button>'; }).join("") +
+      '</div>' +
+      '<div class="page-body" style="padding-top:0"><div class="panel" style="margin-bottom:0"><div class="panel-body no-pad" id="logStream">' + renderLogStream(rows.slice(0, 500)) + '</div></div></div>' +
+    '</div>';
+  document.querySelectorAll("[data-lvl]").forEach(function(b){ b.onclick = function(){ S.logLevel = b.dataset.lvl; renderLogs(); }; });
+  document.querySelectorAll("[data-log]").forEach(function(el){
+    el.onclick = function(){
+      var meta = JSON.parse(el.dataset.log);
+      if (meta.trace_id) withLoading(function(){ return openTraceQuick(meta.trace_id); });
+      else openDrawer({title:"Log record", sub: el.querySelector(".ts").textContent, bodyHTML: '<pre>' + esc(pretty(rows.find(function(r){ return r.id === meta.id; }) || {})) + '</pre>'});
+    };
+  });
 }
 
-async function openTraceMap(traceId){
-  selectedTraceId=traceId;
-  renderTraceList();
-  copyCache.delete('trace:'+traceId);
-  $('drawerTitle').textContent='Triggered map';
-  $('drawerSub').textContent='trace '+traceId;
-  $('drawerBody').innerHTML='<div class="empty-state">Loading selected trace...</div>';
-  openDrawer();
-  var data;
-  try{
-    data=await api('/api/traces/'+encodeURIComponent(traceId)+'/map?slim=true');
-  }catch(err){
-    $('drawerBody').innerHTML='<div class="empty-state">Failed to load trace: '+esc(err.message||String(err))+'</div>';
-    throw err;
+/* ───────────────────────────  RENDER · ERRORS  ─────────────────────────── */
+function renderErrors(){
+  var clusters = inScope(S.errorClusters || []);
+  var selected = clusters.find(function(c){ return c.id === S.selectedClusterId; }) || clusters[0];
+  if (selected && !S.selectedClusterId) S.selectedClusterId = selected.id;
+  var clusterListHTML = clusters.length ? clusters.map(function(c){
+    var isActive = c.id === S.selectedClusterId;
+    return '<div class="trace-row ' + (isActive ? "active" : "") + '" data-cluster="' + esc(c.id) + '" data-app="' + esc(c.app_id) + '" style="grid-template-columns:1fr auto">' +
+      '<div>' +
+        '<div class="route"><span class="chip bad">' + esc(c.type) + '</span> <span class="truncate">' + esc(String(c.normalized_message || "").slice(0, 80)) + '</span></div>' +
+        '<div class="meta">' + esc(c.service_name || "") + (c.route_pattern ? ' · ' + esc((c.method || "") + " " + c.route_pattern) : "") + ' · ' + esc(fmtRel(c.last_seen)) + '</div>' +
+      '</div>' +
+      '<div class="dur txt-bad">' + num(c.count) + '×</div>' +
+    '</div>';
+  }).join("") : '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>No errors captured.</p></div>';
+
+  var detailHTML = "";
+  if (selected){
+    detailHTML =
+      '<div class="waterfall">' +
+        '<div class="wf-head">' +
+          '<div class="wf-title"><span class="chip bad">' + esc(selected.type) + '</span><span>' + esc(String(selected.normalized_message || "").slice(0, 120)) + '</span></div>' +
+          '<div class="wf-meta">' +
+            '<span class="kv"><span class="k">service</span><span class="v">' + esc(selected.service_name || "—") + '</span></span>' +
+            '<span class="kv"><span class="k">route</span><span class="v">' + esc((selected.method || "") + " " + (selected.route_pattern || "—")) + '</span></span>' +
+            '<span class="kv"><span class="k">count</span><span class="v">' + num(selected.count) + '</span></span>' +
+            '<span class="kv"><span class="k">first seen</span><span class="v">' + esc(fmtTs(selected.first_seen)) + '</span></span>' +
+            '<span class="kv"><span class="k">last seen</span><span class="v">' + esc(fmtTs(selected.last_seen)) + '</span></span>' +
+          '</div>' +
+          '<div class="wf-actions">' +
+            (selected.sample_trace_id ? '<button class="btn btn-primary" data-open-trace="' + esc(selected.sample_trace_id) + '">VIEW SAMPLE TRACE →</button>' : '<button class="btn" disabled>NO SAMPLE TRACE</button>') +
+          '</div>' +
+        '</div>' +
+        (selected.sample_payload_json ? '<pre>' + esc(pretty(selected.sample_payload_json)) + '</pre>' : '') +
+      '</div>';
   }
-  var traceRoute=data.traces&&data.traces[0]&&data.traces[0].route_id;
-  if(traceRoute&&(!routeState||!routeState.route||routeState.route.id!==traceRoute)){
-    selectedRouteId=traceRoute;
-    routeState=await api('/api/routes/'+encodeURIComponent(traceRoute)+'/requests?include_hidden=true');
-  }
-  selectedTraceId=traceId;
-  if(traceRoute)switchTab('requests');
-  renderTraceList();
-  var flowLogs=data.flow_logs||data.logs||[];
-  var backgroundLogs=data.nearby_background_logs||[];
-  $('drawerTitle').textContent='Triggered map';
-  $('drawerSub').textContent='trace '+traceId+' &bull; '+flowLogs.length+' exact logs &bull; '+(data.event_count||data.events.length)+' events &bull; '+data.dependencies.length+' dependency calls &bull; '+backgroundLogs.length+' nearby background logs hidden';
-  var logsHtml=flowLogs.map(function(l){
-    return '<div class="log-item"><div class="log-header"><span class="level-badge level-'+esc(l.level)+'">'+esc(l.level||'LOG')+'</span><span class="small">'+esc(l.service_name)+' &bull; '+esc(fmtTs(l.timestamp))+' &bull; exact trace</span></div><div class="log-body">'+esc(l.message)+'</div><div class="small mono">'+esc(l.logger_name||'')+(l.source_function?' &bull; '+esc(l.source_function):'')+'</div></div>';
-  }).join('')||'<div class="empty-state">No logs directly correlated to this trace.</div>';
-  var backgroundHtml=backgroundLogs.slice(0,80).map(function(l){
-    return '<div class="log-item"><div class="log-header"><span class="level-badge level-'+esc(l.level)+'">'+esc(l.level||'LOG')+'</span><span class="small">'+esc(l.service_name)+' &bull; '+esc(fmtTs(l.timestamp))+' &bull; '+(l.trace_id?'other trace':'background/no trace')+'</span></div><div class="log-body">'+esc(l.message)+'</div><div class="small mono">'+esc(l.logger_name||'')+(l.source_function?' &bull; '+esc(l.source_function):'')+'</div></div>';
-  }).join('');
-  var hasGrouped=!!(data.flow&&Array.isArray(data.flow.nodes)&&data.flow.nodes.length);
-  var groupedMap=renderMap(Object.assign({},data,{logs:flowLogs}));
-  var rawTimeline=renderRawTimeline(data.timeline||data.events);
-  $('drawerBody').innerHTML='<div class="tabs-row"><button class="btn btn-primary" data-copy-trace="'+esc(traceId)+'">Copy full trace for AI</button><span id="copyStatus" class="small copy-ok">Copy context is prepared only when requested.</span><span class="pill">'+data.traces.length+' route</span><span class="pill">'+data.spans.length+' spans</span><span class="pill">'+data.dependencies.length+' deps</span><span class="pill">'+flowLogs.length+' exact logs</span><span class="pill">'+data.exceptions.length+' errors</span></div><div class="explain">Only exact trace-id events are shown in the causal flow. Cron jobs, SQS pollers, and background tasks run independently with no trace id and are separated as nearby background activity.</div>'+renderTraceViewToggle(hasGrouped)+'<div id="groupedTraceView" class="trace-toggle-panel">'+groupedMap+'</div><div id="rawTraceView" class="trace-toggle-panel hidden-panel"><h3 style="margin:0 0 8px">Raw causal timeline</h3>'+rawTimeline+'</div><h3 style="margin:14px 0 8px">Dependency details + inputs</h3>'+renderDependencyDetails(data.dependencies||[])+'<h3 style="margin:14px 0 8px">Exact flow logs</h3><div>'+logsHtml+'</div>'+(hasGrouped?'':'<h3 style="margin:14px 0 8px">Raw causal timeline</h3>'+rawTimeline)+'<br><details style="margin-top:12px"><summary class="small" style="cursor:pointer;padding:4px 0">Nearby background activity ('+backgroundLogs.length+')</summary><div class="explain" style="margin-top:8px">These logs happened around the same time but have no matching trace_id.</div><div>'+(backgroundHtml||'<div class="empty-state">No nearby background logs.</div>')+'</div></details>';
-  openDrawer();
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Errors</div><div class="page-sub">' + clusters.length + ' cluster' + (clusters.length === 1 ? '' : 's') + ' · ' + fmtWindow() + '</div></div>' +
+      '</div>' +
+      '<div class="page-body" style="padding-top:0">' +
+        '<div class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="panel-title">▰ Error timeline · 24h</span></div><div class="panel-body" id="errTimelineBody"></div></div>' +
+        '<div class="split t-list" style="height:calc(100vh - 360px);border:1px solid var(--rule);border-top:1px solid var(--rule)">' +
+          '<div class="col">' + clusterListHTML + '</div>' +
+          '<div class="col">' + (detailHTML || '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>Pick a cluster to inspect.</p></div>') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  drawErrTimeline($("errTimelineBody"));
+  document.querySelectorAll("[data-cluster]").forEach(function(el){ el.onclick = function(){ S.selectedClusterId = el.dataset.cluster; renderErrors(); }; });
+  document.querySelectorAll("[data-open-trace]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return openTraceQuick(b.dataset.openTrace); }); }; });
+}
+function drawErrTimeline(container){
+  var s = S.errorTimeline || [];
+  if (!s.length){ container.innerHTML = '<div class="dim" style="text-align:center;padding:20px">No error events in the last 24h.</div>'; return; }
+  // bucket by hour, sum counts
+  var byBucket = {};
+  s.forEach(function(r){ byBucket[r.bucket] = (byBucket[r.bucket] || 0) + Number(r.count || 0); });
+  var keys = Object.keys(byBucket).sort();
+  var max = Math.max(1, Math.max.apply(null, keys.map(function(k){ return byBucket[k]; })));
+  var W = container.clientWidth - 4 || 800;
+  var H = 96;
+  var pad = {l: 30, r: 8, t: 6, b: 18};
+  var iw = W - pad.l - pad.r;
+  var ih = H - pad.t - pad.b;
+  var bw = iw / keys.length;
+  var bars = keys.map(function(k, i){
+    var v = byBucket[k];
+    var h = (v / max) * ih;
+    var x = pad.l + i * bw;
+    var y = pad.t + ih - h;
+    return '<rect x="' + (x + 1) + '" y="' + y + '" width="' + Math.max(2, bw - 2) + '" height="' + h + '" fill="var(--bad)" opacity="0.85"><title>' + esc(fmtTs(k)) + ' · ' + v + '</title></rect>';
+  }).join("");
+  var ticks = keys.map(function(k, i){ if (i % Math.max(1, Math.floor(keys.length/6)) !== 0) return ""; return '<text class="axis-text" x="' + (pad.l + i * bw + bw/2) + '" y="' + (H - 4) + '" text-anchor="middle">' + fmtTime(k) + '</text>'; }).join("");
+  container.innerHTML = '<svg class="timeline-svg" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+    '<text class="axis-text" x="' + (pad.l - 6) + '" y="' + (pad.t + 6) + '" text-anchor="end">' + max + '</text>' +
+    '<text class="axis-text" x="' + (pad.l - 6) + '" y="' + (pad.t + ih + 2) + '" text-anchor="end">0</text>' +
+    bars + ticks +
+  '</svg>';
 }
 
-// ── OPEN ERROR ──
-async function openError(appId,id){
-  var data=await api('/api/apps/'+encodeURIComponent(appId)+'/exceptions/'+encodeURIComponent(id)+'?include_context=false');
-  if(data.exception&&data.exception.sample_trace_id){await openTraceMap(data.exception.sample_trace_id);return;}
-  $('drawerTitle').textContent='Error';
-  $('drawerSub').textContent=(data.exception&&data.exception.last_seen)||'';
-  $('drawerBody').innerHTML='<pre>'+esc(pretty(data))+'</pre>';
-  openDrawer();
+/* ───────────────────────────  RENDER · DEPS  ─────────────────────────── */
+var DEP_COLUMNS = {
+  target:    { get: function(d){ return d.target || ""; }, numeric: false },
+  operation: { get: function(d){ return d.operation || ""; }, numeric: false },
+  service:   { get: function(d){ return d.service_name || ""; }, numeric: false },
+  calls:     { get: function(d){ return Number(d.call_count||0); }, numeric: true },
+  errors:    { get: function(d){ return Number(d.error_count||0); }, numeric: true },
+  p95:       { get: function(d){ return Number(d.p95_duration_ms||0); }, numeric: true }
+};
+
+function renderDeps(){
+  var rows = inScope(S.deps || []).map(function(d){ return Object.assign({}, d, {label: depLabel(d)}); });
+  var groupKey = function(d){
+    if (d.dependency_type === "db") return "DB";
+    if (d.dependency_type === "http") return "HTTP";
+    if (d.dependency_type === "package") return "PACKAGE";
+    return (d.dependency_type || "OTHER").toUpperCase();
+  };
+  var byGroup = {DB:[], HTTP:[], PACKAGE:[], OTHER:[]};
+  rows.forEach(function(d){ var g = groupKey(d); (byGroup[g] || byGroup.OTHER).push(d); });
+  var groups = ["DB", "HTTP", "PACKAGE", "OTHER"].filter(function(g){ return byGroup[g] && byGroup[g].length; });
+  var active = S.selectedDepId || (rows[0] && rows[0].id);
+
+  var groupTabs = groups.map(function(g){
+    return '<button class="wf-tab ' + (S.depGroup === g ? "active" : "") + '" data-depg="' + g + '">' + g + ' · ' + byGroup[g].length + '</button>';
+  }).join("");
+  if (!S.depGroup || !byGroup[S.depGroup]) S.depGroup = groups[0] || "DB";
+  var current = byGroup[S.depGroup] || [];
+
+  var sortedDeps = sortRows(current, DEP_COLUMNS, S.depsSort);
+  var html = sortedDeps.length ? '<table class="tbl"><thead><tr>' +
+      sortHeader("target",    "target",    "",    S.depsSort, "data-sort-deps") +
+      sortHeader("operation", "operation", "",    S.depsSort, "data-sort-deps") +
+      sortHeader("service",   "service",   "",    S.depsSort, "data-sort-deps") +
+      sortHeader("calls",     "calls",     "num", S.depsSort, "data-sort-deps") +
+      sortHeader("errors",    "errors",    "num", S.depsSort, "data-sort-deps") +
+      sortHeader("p95",       "p95",       "num", S.depsSort, "data-sort-deps") +
+      '<th></th>' +
+    '</tr></thead><tbody>' + sortedDeps.map(function(d){
+      var errRate = d.call_count > 0 ? (Number(d.error_count||0) / Number(d.call_count) * 100) : 0;
+      return '<tr class="row-clickable" data-dep="' + esc(d.id) + '">' +
+        '<td class="truncate"><span class="mono">' + esc(d.target || "—") + '</span></td>' +
+        '<td class="truncate dim">' + esc(d.operation || "") + '</td>' +
+        '<td class="dim">' + esc(d.service_name || "") + '</td>' +
+        '<td class="num">' + num(d.call_count) + '</td>' +
+        '<td class="num ' + (errRate > 1 ? "txt-bad" : "") + '">' + num(d.error_count) + (errRate > 0 ? ' <span class="dim">(' + errRate.toFixed(1) + '%)</span>' : '') + '</td>' +
+        '<td class="num">' + (d.p95_duration_ms ? fmtMs(Number(d.p95_duration_ms)) : "—") + '</td>' +
+        '<td><button class="btn btn-sm" data-dep-copy="' + esc(d.id) + '">' + copyLabel("dep", d.id, "COPY") + '</button></td>' +
+      '</tr>';
+    }).join("") + '</tbody></table>' :
+    '<div class="empty"><div class="ico">∅</div><p>No ' + S.depGroup + ' dependencies in this window.</p></div>';
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Dependencies</div><div class="page-sub">' + rows.length + ' dependency aggregate' + (rows.length === 1 ? '' : 's') + ' · ' + fmtWindow() + '</div></div>' +
+      '</div>' +
+      '<div class="filter-row wrap"><div class="wf-tabs" style="border-bottom:0">' + (groupTabs || '<span class="txt-dim">No dependencies.</span>') + '</div></div>' +
+      '<div class="page-body" style="padding-top:0"><div class="panel" style="margin-bottom:0">' + html + '</div></div>' +
+    '</div>';
+  document.querySelectorAll("[data-depg]").forEach(function(b){ b.onclick = function(){ S.depGroup = b.dataset.depg; renderDeps(); }; });
+  document.querySelectorAll("[data-sort-deps]").forEach(function(th){ th.onclick = function(){ toggleSort(S.depsSort, th.dataset.sortDeps); renderDeps(); }; });
+  document.querySelectorAll("[data-dep]").forEach(function(tr){ tr.onclick = function(ev){ if (ev.target.closest("[data-dep-copy]")) return; var id = tr.dataset.dep; var d = rows.find(function(x){ return x.id === id; }); if (d) withLoading(function(){ return openDepDetail(d); }); }; });
+  document.querySelectorAll("[data-dep-copy]").forEach(function(b){ b.onclick = function(ev){ ev.stopPropagation(); prepareAndCopy("dep", b.dataset.depCopy, "/api/dependencies/" + encodeURIComponent(b.dataset.depCopy) + "/agent-context", "DEP"); }; });
+}
+function depLabel(d){
+  if (d.dependency_type === "db") return "DB · " + (d.target || "") + " · " + (d.operation || "");
+  if (d.dependency_type === "http") return "HTTP " + (d.operation || "") + " " + (d.target || "");
+  if (d.dependency_type === "package") return "pkg " + d.target;
+  return (d.dependency_type || "dep") + " " + (d.target || "");
+}
+async function openDepDetail(d){
+  var ctx = await api("/api/dependencies/" + encodeURIComponent(d.id) + "/context");
+  var errs = (ctx.error_samples || []).map(function(e){
+    return '<div class="log-row"><span class="ts">' + esc(fmtTs(e.timestamp)) + '</span><span class="lvl ERROR">ERR</span><span class="svc">' + esc((e.payload && e.payload.error_type) || "error") + '</span><span class="msg">' + esc((e.payload && e.payload.error_message) || "") + (e.trace_id ? ' <a data-open-trace="' + esc(e.trace_id) + '" style="color:var(--signal);text-decoration:underline;margin-left:6px">view trace →</a>' : '') + '</span></div>';
+  }).join("");
+  var related = (ctx.related_logs || []).map(function(l){
+    return '<div class="log-row"><span class="ts">' + esc(fmtTs(l.timestamp)) + '</span><span class="lvl ' + esc(l.level || "INFO") + '">' + esc(l.level || "LOG") + '</span><span class="svc">' + esc(l.service_name || "") + '</span><span class="msg">' + esc(l.message || "") + '</span></div>';
+  }).join("");
+  openDrawer({
+    title: "Dependency · " + (d.target || ""),
+    sub: (d.service_name || "—") + " · " + num(d.call_count) + " calls · " + num(d.error_count) + " errors",
+    bodyHTML:
+      '<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn btn-primary" id="copyDepBtn">' + copyLabel("dep", d.id, "COPY FOR AI") + '</button></div>' +
+      '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Error samples</span><span class="panel-meta">' + (ctx.error_samples || []).length + '</span></div><div class="panel-body no-pad">' + (errs || '<div class="empty" style="border:0"><p>No individual error payloads retained.</p></div>') + '</div></div>' +
+      '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Related logs</span><span class="panel-meta">' + (ctx.related_logs || []).length + '</span></div><div class="panel-body no-pad">' + (related || '<div class="empty" style="border:0"><p>No related logs.</p></div>') + '</div></div>'
+  });
+  $("copyDepBtn").onclick = function(){ prepareAndCopy("dep", d.id, "/api/dependencies/" + encodeURIComponent(d.id) + "/agent-context", "DEP"); };
+  document.querySelectorAll("[data-open-trace]").forEach(function(a){ a.style.cursor = "pointer"; a.onclick = function(ev){ ev.preventDefault(); closeDrawer(); withLoading(function(){ return openTraceQuick(a.dataset.openTrace); }); }; });
 }
 
-// ── WIRE UP EVENT LISTENERS ──
-$('refreshBtn').onclick=function(){withLoading(refresh);};
-$('refreshInterval').onchange=function(e){setRefreshIntervalMs(e.target.value);};
-$('logWindow').onchange=function(e){logWindowMinutes=Number(e.target.value);localStorage.setItem('runtimeObserverLogWindowMinutes',String(logWindowMinutes));withLoading(refresh);};
-$('logSource').onchange=function(e){logSource=e.target.value;applyLocalLogFilters();};
-syncLogWindowSelect();
-$('searchBtn').onclick=function(){withLoading(searchLogs);};
-$('level').onchange=function(){withLoading(searchLogs);};
-$('logSearch').onkeydown=function(e){if(e.key==='Enter')withLoading(searchLogs);};
-$('logSearch').oninput=applyLocalLogFilters;
-$('routeSearch').oninput=function(e){routeSearchQuery=e.target.value;applyRouteSearch();};
-$('showHiddenBtn').onclick=function(){showHidden=!showHidden;renderEntries();};
-$('closeBtn').onclick=closeDrawer;
-$('drawerFullscreenBtn').onclick=toggleDrawerFullscreen;
-$('drawerOverlay').onclick=closeDrawer;
-$('loginForm').onsubmit=loginSubmit;
-$('logoutBtn').onclick=logout;
-$('themeToggle').onclick=toggleTheme;
-document.querySelectorAll('[data-tab]').forEach(function(b){b.onclick=function(){switchTab(b.dataset.tab);};});
-document.addEventListener('click',function(ev){
-  var depBtn=ev.target.closest('[data-copy-dep]');
-  if(depBtn){ev.preventDefault();ev.stopPropagation();copyDependency(depBtn.dataset.copyDep,depBtn);return;}
-  var traceBtn=ev.target.closest('[data-copy-trace]');
-  if(traceBtn){ev.preventDefault();ev.stopPropagation();copyTrace(traceBtn.dataset.copyTrace,traceBtn);return;}
-  var logBtn=ev.target.closest('[data-copy-log]');
-  if(logBtn){ev.preventDefault();ev.stopPropagation();copyLog(logBtn.dataset.copyLog,logBtn);return;}
-  var openTraceBtn=ev.target.closest('[data-open-trace]');
-  if(openTraceBtn){ev.preventDefault();ev.stopPropagation();withLoading(function(){return openTraceMap(openTraceBtn.dataset.openTrace);});return;}
-  var viewBtn=ev.target.closest('[data-trace-view]');
-  if(viewBtn){
-    ev.preventDefault();ev.stopPropagation();
-    var showRaw=viewBtn.dataset.traceView==='raw';
-    if($('groupedTraceView'))$('groupedTraceView').classList.toggle('hidden-panel',showRaw);
-    if($('rawTraceView'))$('rawTraceView').classList.toggle('hidden-panel',!showRaw);
-    document.querySelectorAll('[data-trace-view]').forEach(function(btn){btn.classList.toggle('btn-primary',btn===viewBtn);});
+/* ───────────────────────────  RENDER · SETTINGS  ─────────────────────────── */
+function renderSettings(){
+  var hiddenRows = (S.hiddenPrefs || []).map(function(h){
+    return '<tr><td>' + esc(h.target_kind) + '</td><td class="truncate mono dim">' + esc(h.target_id) + '</td><td class="dim">' + esc(h.app_id || "*") + '</td><td><button class="btn btn-sm" data-restore-kind="' + esc(h.target_kind) + '" data-restore-id="' + esc(h.target_id) + '" data-restore-app="' + esc(h.app_id || "") + '">RESTORE</button></td></tr>';
+  }).join("") || '<tr><td colspan="4" class="dim" style="text-align:center;padding:24px">No hidden items.</td></tr>';
+
+  $("main").innerHTML =
+    '<div class="page">' +
+      '<div class="page-header">' +
+        '<div><div class="page-title">Settings</div><div class="page-sub">Project keys, hidden items, account</div></div>' +
+      '</div>' +
+      '<div class="page-body">' +
+        '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Current project</span></div><div class="panel-body" style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="btn btn-primary" id="newKeyHere">+ NEW SDK KEY</button>' +
+          '<button class="btn" id="manageKeysHere">MANAGE SDK KEYS</button>' +
+          '<button class="btn btn-danger" id="deleteProjectHere">DELETE PROJECT</button>' +
+          '<button class="btn" id="backToProjectsHere">← BACK TO PROJECTS</button>' +
+        '</div></div>' +
+        '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Hidden items</span><span class="panel-meta">' + (S.hiddenPrefs || []).length + '</span></div><div class="panel-body no-pad"><table class="tbl"><thead><tr><th>kind</th><th>id</th><th>app</th><th></th></tr></thead><tbody>' + hiddenRows + '</tbody></table></div></div>' +
+        '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Account</span></div><div class="panel-body">Signed in as <b>' + esc(S.user ? S.user.username : "—") + '</b> · <button class="btn btn-sm" id="logoutHere">SIGN OUT</button></div></div>' +
+      '</div>' +
+    '</div>';
+  $("newKeyHere").onclick = function(){ withLoading(function(){ return createProjectKey(S.selectedProject); }); };
+  $("manageKeysHere").onclick = function(){ withLoading(function(){ return showProjectKeys(S.selectedProject); }); };
+  $("deleteProjectHere").onclick = function(){ withLoading(function(){ return deleteProject(S.selectedProject); }); };
+  $("backToProjectsHere").onclick = function(){ backToProjects(); };
+  $("logoutHere").onclick = logout;
+  document.querySelectorAll("[data-restore-kind]").forEach(function(b){
+    b.onclick = function(){ withLoading(function(){ return setHidden(b.dataset.restoreKind, b.dataset.restoreId, b.dataset.restoreApp || null, false); }); };
+  });
+}
+
+/* ───────────────────────────  CRUMB MENUS  ─────────────────────────── */
+function openProjectMenu(){
+  if (!S.projects.length) return;
+  var items = ['<button data-pick="" class="menu-item">↶ ALL PROJECTS</button>']
+    .concat(S.projects.map(function(p){ return '<button data-pick="' + esc(p.project_name) + '" class="menu-item ' + (p.project_name === S.selectedProject ? "active" : "") + '">' + esc(p.project_name) + ' <span class="dim">· ' + num(p.request_count) + '</span></button>'; }))
+    .join("");
+  openMenu($("crumbProject"), items);
+}
+function openAppMenu(){
+  if (!S.selectedProject) return;
+  var apps = scopedApps();
+  var items = ['<button data-app="all" class="menu-item ' + (S.selectedApp === "all" ? "active" : "") + '">ALL APPS</button>']
+    .concat(apps.map(function(a){ return '<button data-app="' + esc(a.id) + '" class="menu-item ' + (S.selectedApp === a.id ? "active" : "") + '">' + esc(appName(a)) + ' <span class="dim">· ' + esc(a.language || "") + '</span></button>'; }))
+    .join("");
+  openMenu($("crumbApp"), items);
+}
+function openMenu(anchor, itemsHTML){
+  closeMenus();
+  var rect = anchor.getBoundingClientRect();
+  var m = document.createElement("div");
+  m.className = "popmenu";
+  m.style.cssText = "position:fixed;top:" + (rect.bottom) + "px;left:" + rect.left + "px;min-width:" + Math.max(180, rect.width) + "px;background:var(--panel);border:1px solid var(--rule-2);z-index:60;max-height:60vh;overflow-y:auto;box-shadow:0 6px 24px rgba(0,0,0,.3)";
+  m.innerHTML = '<style>.popmenu .menu-item{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;color:var(--ink);border-bottom:1px solid var(--rule);transition:background .08s;text-transform:uppercase;letter-spacing:.04em;font-weight:500}.popmenu .menu-item:hover{background:var(--bg-2)}.popmenu .menu-item.active{color:var(--signal);background:var(--signal-soft)}.popmenu .menu-item:last-child{border-bottom:0}</style>' + itemsHTML;
+  document.body.appendChild(m);
+  m.querySelectorAll("[data-pick]").forEach(function(b){ b.onclick = function(){ closeMenus(); var v = b.dataset.pick; if (v) selectProject(v); else backToProjects(); }; });
+  m.querySelectorAll("[data-app]").forEach(function(b){ b.onclick = function(){ closeMenus(); S.selectedApp = b.dataset.app; S.selectedRouteId = null; S.selectedTraceId = null; S.routeState = null; resetTracesPageState(); render(); withLoading(refresh); }; });
+  setTimeout(function(){ document.addEventListener("click", _closeMenuHandler); }, 10);
+}
+function _closeMenuHandler(ev){ if (!ev.target.closest(".popmenu")) closeMenus(); }
+function closeMenus(){ document.querySelectorAll(".popmenu").forEach(function(m){ m.remove(); }); document.removeEventListener("click", _closeMenuHandler); }
+
+/* ───────────────────────────  RAIL EXPAND/COLLAPSE  ─────────────────────────── */
+function applyRailExpanded(){
+  var shell = document.getElementById("shell");
+  var rail = document.getElementById("rail");
+  var toggle = document.getElementById("railToggle");
+  var icon = document.getElementById("railToggleIcon");
+  var expanded = !!S.railExpanded;
+  shell.classList.toggle("rail-expanded", expanded);
+  rail.classList.toggle("expanded", expanded);
+  if (icon){
+    // chevron points left when expanded (click to collapse), right when collapsed (click to expand)
+    icon.innerHTML = expanded ? '<path d="M15 6l-6 6 6 6"/>' : '<path d="M9 6l6 6-6 6"/>';
   }
+  if (toggle){
+    toggle.title = expanded ? "Collapse sidebar" : "Expand sidebar";
+    var tip = toggle.querySelector(".tip");
+    if (tip) tip.textContent = expanded ? "COLLAPSE" : "EXPAND";
+  }
+}
+function toggleRailExpanded(){
+  S.railExpanded = !S.railExpanded;
+  localStorage.setItem("ro:railExpanded", S.railExpanded ? "1" : "0");
+  applyRailExpanded();
+}
+
+/* ───────────────────────────  WIRE UP  ─────────────────────────── */
+document.querySelectorAll(".rail-btn[data-page]").forEach(function(b){ b.onclick = function(){ goto(b.dataset.page); }; });
+$("railToggle").onclick = toggleRailExpanded;
+$("brand").onclick = backToProjects;
+$("crumbProject").onclick = openProjectMenu;
+$("crumbApp").onclick = openAppMenu;
+$("refreshBtn").onclick = function(){ withLoading(refresh); };
+$("themeBtn").onclick = toggleTheme;
+$("logoutBtn").onclick = logout;
+$("loginForm").onsubmit = loginSubmit;
+$("drawerClose").onclick = closeDrawer;
+$("drawerOverlay").onclick = closeDrawer;
+$("windowSelect").onchange = function(e){ S.windowMinutes = Number(e.target.value); localStorage.setItem("ro:window", String(S.windowMinutes)); withLoading(refresh); };
+$("refreshSelect").onchange = function(e){ setRefresh(Number(e.target.value)); };
+$("hiddenToggle").onclick = function(){ S.showHidden = !S.showHidden; render(); };
+$("globalSearch").oninput = function(e){ S.searchQuery = e.target.value; render(); };
+document.addEventListener("keydown", function(ev){
+  if (ev.key === "Escape"){ closeDrawer(); closeMenus(); }
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === "k"){ ev.preventDefault(); $("globalSearch").focus(); }
+  if (ev.key === "/" && document.activeElement.tagName !== "INPUT"){ ev.preventDefault(); $("globalSearch").focus(); }
 });
 
-// ── EXPOSE GLOBALS NEEDED BY INLINE ONCLICK HANDLERS ──
-window.backToProjects = backToProjects;
-window.createProjectKey = function(name){return withLoading(function(){return createProjectKey(name);});};
-window.openTraceMap = function(traceId){return withLoading(function(){return openTraceMap(traceId);});};
+/* expose for inline handlers */
+window.RO = {selectProject, backToProjects, selectRoute, openTraceQuick, createProjectKey, showProjectKeys, deleteProject};
 
-// ── INIT ──
+/* ───────────────────────────  BOOT  ─────────────────────────── */
+goto("pulse");
 checkAuth().then(function(ok){
-  if(ok){setRefreshIntervalMs($('refreshInterval').value);refresh();}
+  if (ok){ setRefresh(S.refreshMs); refresh(); }
 });
 
 })();
-</script></body></html>
+</script>
+</body>
+</html>
 '''

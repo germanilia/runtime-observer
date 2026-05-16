@@ -22,9 +22,17 @@ SESSION_COOKIE = "runtime_observer_session"
 SESSION_DAYS = 7
 def _api_key_hash(api_key: str) -> str:
     return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
-def _project_from_api_key(api_key: str, db: Database, settings: Settings) -> str | None:
+
+
+def _project_from_api_key(api_key: str, db: Database, settings: Settings) -> str:
     if settings.api_key and hmac.compare_digest(api_key, settings.api_key):
-        return None
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "The collector-wide admin key cannot be used to ingest telemetry. "
+                "Generate a project API key in the dashboard and use that token instead."
+            ),
+        )
     key_hash = _api_key_hash(api_key)
     now = iso(datetime.now(UTC))
     with db.connect() as conn:
@@ -36,14 +44,9 @@ def _project_from_api_key(api_key: str, db: Database, settings: Settings) -> str
             raise HTTPException(status_code=401, detail="Invalid Runtime Observer API key")
         conn.execute("UPDATE project_api_keys SET last_used_at=? WHERE id=?", (now, row["id"]))
         return str(row["project_name"])
-def _event_projects(events: list[dict[str, Any]]) -> set[str]:
-    projects: set[str] = set()
-    for event in events:
-        service = event.get("service") if isinstance(event, dict) else None
-        if isinstance(service, dict):
-            projects.add(str(service.get("project_name") or "default"))
-    return projects
-def require_ingest_auth(events: list[dict[str, Any]], request: Request, api_key: str | None = None, db: Database | None = None, settings: Settings | None = None) -> str | None:
+
+
+def require_ingest_auth(request: Request, api_key: str | None = None, db: Database | None = None, settings: Settings | None = None) -> str | None:
     resolved_settings = settings or request.app.state.settings
     if resolved_settings.insecure_dev_mode:
         return None
@@ -63,12 +66,6 @@ def apply_project_scope(events: list[dict[str, Any]], project_name: str | None) 
         service_data["project_name"] = project_name
         scoped_events.append({**event, "service": service_data})
     return scoped_events
-def require_bearer(request: Request, settings: Settings = Depends(get_settings)) -> None:
-    if settings.insecure_dev_mode:
-        return
-    auth = request.headers.get("Authorization", "")
-    if auth != f"Bearer {settings.api_key}":
-        raise HTTPException(status_code=401, detail="Invalid Runtime Observer API key")
 
 def _password_hash(password: str, salt: str | None = None) -> str:
     salt = salt or secrets.token_hex(16)
@@ -149,8 +146,15 @@ def hidden_route_clause(user_id: str, route_column: str = "routes.id", app_colum
         [user_id],
     )
 
-def visible_apps_clause(user_id: str, alias: str = "apps") -> tuple[str, list[Any]]:
-    return hidden_preference_clause(alias, "app", user_id)
+def visible_apps_clause(user_id: str, alias: str = "apps", *, settings: Settings | None = None) -> tuple[str, list[Any]]:
+    clause, params = hidden_preference_clause(alias, "app", user_id)
+    if settings is None or not settings.insecure_dev_mode:
+        clause = (
+            f"({clause}) AND {alias}.project_name IN ("
+            "SELECT project_name FROM project_api_keys "
+            "UNION SELECT project_name FROM project_settings)"
+        )
+    return clause, params
 
 def log_window_start(log_window_minutes: int | None) -> str | None:
     if not log_window_minutes or log_window_minutes <= 0:
@@ -158,8 +162,8 @@ def log_window_start(log_window_minutes: int | None) -> str | None:
     return iso(datetime.now(UTC) - timedelta(minutes=log_window_minutes))
 
 
-def scoped_apps_filter(user_id: str, *, project_name: str | None = None, app_id: str | None = None, alias: str = "apps") -> tuple[str, list[Any]]:
-    clause, params = visible_apps_clause(user_id, alias)
+def scoped_apps_filter(user_id: str, *, project_name: str | None = None, app_id: str | None = None, alias: str = "apps", settings: Settings | None = None) -> tuple[str, list[Any]]:
+    clause, params = visible_apps_clause(user_id, alias, settings=settings)
     parts = [clause]
     if project_name:
         parts.append(f"{alias}.project_name=?")
@@ -597,7 +601,7 @@ def create_router() -> APIRouter:
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
-        project_name = require_ingest_auth(events, request, db=db, settings=settings)
+        project_name = require_ingest_auth(request, db=db, settings=settings)
         scoped_events = apply_project_scope(events, project_name)
         try:
             return request.app.state.ingest_backend.enqueue(scoped_events).to_response()
@@ -613,7 +617,7 @@ def create_router() -> APIRouter:
         events = body.get("events")
         if not isinstance(events, list):
             raise HTTPException(status_code=422, detail="events must be a list")
-        project_name = require_ingest_auth(events, request, api_key=api_key, db=db, settings=settings)
+        project_name = require_ingest_auth(request, api_key=api_key, db=db, settings=settings)
         scoped_events = apply_project_scope(events, project_name)
         try:
             return request.app.state.ingest_backend.enqueue(scoped_events).to_response()
@@ -689,15 +693,15 @@ def create_router() -> APIRouter:
         return {"status": "visible"}
 
     @router.get("/api/apps")
-    def apps(db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
-        clause, params = visible_apps_clause(user_id, "apps")
+    def apps(db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        clause, params = visible_apps_clause(user_id, "apps", settings=settings)
         with db.connect() as conn:
             rows = conn.execute(f"SELECT * FROM apps WHERE {clause} ORDER BY last_seen DESC", params).fetchall()
             return rows_to_dicts(rows)
 
     @router.get("/api/projects")
-    def projects(db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
-        clause, params = visible_apps_clause(user_id, "apps")
+    def projects(db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        clause, params = visible_apps_clause(user_id, "apps", settings=settings)
         with db.connect() as conn:
             return rows_to_dicts(
                 conn.execute(
@@ -787,89 +791,102 @@ def create_router() -> APIRouter:
         log_time_clause = "AND logs.timestamp >= ?" if log_start else ""
         log_params: list[Any] = [log_start] if log_start else []
         with db.connect() as conn:
-            visible_clause, visible_params = visible_apps_clause(user_id, "apps")
-            route_clause, route_params = hidden_route_clause(user_id)
-            log_route_clause, log_route_params = hidden_route_clause(user_id, "logs.route_id", "logs.app_id")
-            dep_clause, dep_params = hidden_preference_clause("dependencies", "dependency", user_id, "dependencies.app_id")
-            exc_clause, exc_params = hidden_preference_clause("exceptions", "exception", user_id, "exceptions.app_id")
+            visible_clause, visible_params = visible_apps_clause(user_id, "apps", settings=settings)
             apps = rows_to_dicts(conn.execute(f"SELECT * FROM apps WHERE {visible_clause} ORDER BY last_seen DESC", visible_params).fetchall())
-            totals = row_to_dict(
-                conn.execute(
-                    f"""
-                    SELECT
-                      (SELECT COUNT(*) FROM events JOIN apps ON apps.id=events.app_id WHERE {visible_clause}) event_count,
-                      (SELECT COUNT(*) FROM logs JOIN apps ON apps.id=logs.app_id WHERE {visible_clause} AND (logs.route_id IS NULL OR {log_route_clause})) log_count,
-                      (SELECT COUNT(*) FROM exceptions JOIN apps ON apps.id=exceptions.app_id WHERE {visible_clause} AND {exc_clause}) exception_count,
-                      (SELECT COALESCE(SUM(call_count),0) FROM routes JOIN apps ON apps.id=routes.app_id WHERE {visible_clause} AND {route_clause}) request_count,
-                      (SELECT COALESCE(SUM(error_count),0) FROM routes JOIN apps ON apps.id=routes.app_id WHERE {visible_clause} AND {route_clause}) error_count
-                    """,
-                    [*visible_params, *visible_params, *log_route_params, *visible_params, *exc_params, *visible_params, *route_params, *visible_params, *route_params],
-                ).fetchone()
-            )
-            by_kind = rows_to_dicts(conn.execute(f"SELECT events.app_id, apps.project_name, apps.service_name, apps.display_name, events.kind, COUNT(*) count FROM events JOIN apps ON apps.id=events.app_id WHERE {visible_clause} GROUP BY events.app_id, apps.project_name, apps.service_name, apps.display_name, events.kind ORDER BY count DESC", visible_params).fetchall())
-            by_level = rows_to_dicts(conn.execute(f"SELECT logs.app_id, apps.project_name, apps.service_name, apps.display_name, logs.level, COUNT(*) count FROM logs JOIN apps ON apps.id=logs.app_id WHERE {visible_clause} AND (logs.route_id IS NULL OR {log_route_clause}) GROUP BY logs.app_id, apps.project_name, apps.service_name, apps.display_name, logs.level ORDER BY count DESC", [*visible_params, *log_route_params]).fetchall())
-            recent_errors = rows_to_dicts(
-                conn.execute(
-                    f"""
-                    SELECT exceptions.*, apps.project_name, apps.service_name
-                    FROM exceptions JOIN apps ON apps.id = exceptions.app_id
-                    WHERE {visible_clause} AND {exc_clause}
-                    ORDER BY last_seen DESC LIMIT 20
-                    """,
-                    [*visible_params, *exc_params],
-                ).fetchall()
-            )
-            recent_logs = rows_to_dicts(
-                conn.execute(
-                    f"""
-                    SELECT logs.*, apps.project_name, apps.service_name
-                    FROM logs JOIN apps ON apps.id = logs.app_id
-                    WHERE {visible_clause}
-                      AND (logs.route_id IS NULL OR {log_route_clause})
-                      {log_time_clause}
-                    ORDER BY timestamp DESC LIMIT ?
-                    """,
-                    [*visible_params, *log_route_params, *log_params, log_limit],
-                ).fetchall()
-            )
-            routes = rows_to_dicts(
-                conn.execute(
-                    f"""
-                    SELECT routes.*, apps.project_name, apps.service_name
-                    FROM routes JOIN apps ON apps.id = routes.app_id
-                    WHERE {visible_clause} AND {route_clause}
-                    ORDER BY routes.last_seen DESC, routes.p95_ms DESC LIMIT 60
-                    """,
-                    [*visible_params, *route_params],
-                ).fetchall()
-            )
-            dependencies = rows_to_dicts(
-                conn.execute(
-                    f"""
-                    SELECT dependencies.*, apps.project_name, apps.service_name
-                    FROM dependencies JOIN apps ON apps.id = dependencies.app_id
-                    WHERE {visible_clause} AND {dep_clause}
-                      AND dependencies.target NOT IN ('unknown', 'unknown-db')
-                      AND dependencies.target IS NOT NULL
-                      AND dependencies.target != ''
-                    ORDER BY dependencies.call_count DESC LIMIT 40
-                    """,
-                    [*visible_params, *dep_params],
-                ).fetchall()
-            )
             db_path = getattr(db, "path", None)
             storage = db_path.stat().st_size if db_path and db_path.exists() else 0
             retention_values = read_retention_settings(conn, settings)
+            if not apps:
+                return {
+                    "apps": [],
+                    "totals": {"event_count": 0, "log_count": 0, "exception_count": 0, "request_count": 0, "error_count": 0},
+                    "event_kinds": [],
+                    "log_levels": [],
+                    "recent_errors": [],
+                    "recent_logs": [],
+                    "routes": [],
+                    "dependencies": [],
+                    "log_window": {"minutes": log_window_minutes, "start": log_start, "limit": log_limit, "returned": 0},
+                    "retention": {"days": retention_values["retention_days"], "database_bytes": storage},
+                }
+            app_ids = [str(app["id"]) for app in apps]
+            app_placeholders = ",".join("?" for _ in app_ids)
+            app_meta = {app["id"]: {"project_name": app.get("project_name"), "service_name": app.get("service_name"), "display_name": app.get("display_name")} for app in apps}
+            hidden_route_ids = [str(row["target_id"]) for row in conn.execute(
+                "SELECT DISTINCT target_id FROM user_preferences WHERE user_id=? AND preference_type='hidden' AND target_kind='route'",
+                (user_id,),
+            ).fetchall()]
+            hidden_route_placeholders = ",".join("?" for _ in hidden_route_ids)
+            hidden_dep_ids = [str(row["target_id"]) for row in conn.execute(
+                "SELECT DISTINCT target_id FROM user_preferences WHERE user_id=? AND preference_type='hidden' AND target_kind='dependency'",
+                (user_id,),
+            ).fetchall()]
+            hidden_dep_placeholders = ",".join("?" for _ in hidden_dep_ids)
+            hidden_exc_ids = [str(row["target_id"]) for row in conn.execute(
+                "SELECT DISTINCT target_id FROM user_preferences WHERE user_id=? AND preference_type='hidden' AND target_kind='exception'",
+                (user_id,),
+            ).fetchall()]
+            hidden_exc_placeholders = ",".join("?" for _ in hidden_exc_ids)
+            log_route_filter = f"AND (logs.route_id IS NULL OR logs.route_id NOT IN ({hidden_route_placeholders}))" if hidden_route_ids else ""
+            route_filter = f"AND routes.id NOT IN ({hidden_route_placeholders})" if hidden_route_ids else ""
+            dep_filter = f"AND dependencies.id NOT IN ({hidden_dep_placeholders})" if hidden_dep_ids else ""
+            exc_filter = f"AND exceptions.id NOT IN ({hidden_exc_placeholders})" if hidden_exc_ids else ""
+
+            event_count = scalar(conn.execute(f"SELECT COUNT(*) AS c FROM events WHERE app_id IN ({app_placeholders})", app_ids).fetchone(), "c") or 0
+            log_count = scalar(conn.execute(f"SELECT COUNT(*) AS c FROM logs WHERE app_id IN ({app_placeholders}) {log_route_filter}", [*app_ids, *hidden_route_ids]).fetchone(), "c") or 0
+            exception_count = scalar(conn.execute(f"SELECT COUNT(*) AS c FROM exceptions WHERE app_id IN ({app_placeholders}) {exc_filter}", [*app_ids, *hidden_exc_ids]).fetchone(), "c") or 0
+            routes_totals = row_to_dict(conn.execute(f"SELECT COALESCE(SUM(call_count),0) AS request_count, COALESCE(SUM(error_count),0) AS error_count FROM routes WHERE app_id IN ({app_placeholders}) {route_filter}", [*app_ids, *hidden_route_ids]).fetchone()) or {"request_count": 0, "error_count": 0}
+            totals = {"event_count": int(event_count), "log_count": int(log_count), "exception_count": int(exception_count), "request_count": int(routes_totals.get("request_count") or 0), "error_count": int(routes_totals.get("error_count") or 0)}
+
+            by_kind_rows = conn.execute(f"SELECT app_id, kind, COUNT(*) AS count FROM events WHERE app_id IN ({app_placeholders}) GROUP BY app_id, kind ORDER BY count DESC", app_ids).fetchall()
+            by_kind = [{"app_id": row["app_id"], **app_meta.get(row["app_id"], {}), "kind": row["kind"], "count": row["count"]} for row in by_kind_rows]
+
+            by_level_rows = conn.execute(f"SELECT app_id, level, COUNT(*) AS count FROM logs WHERE app_id IN ({app_placeholders}) {log_route_filter} GROUP BY app_id, level ORDER BY count DESC", [*app_ids, *hidden_route_ids]).fetchall()
+            by_level = [{"app_id": row["app_id"], **app_meta.get(row["app_id"], {}), "level": row["level"], "count": row["count"]} for row in by_level_rows]
+
+            recent_errors_rows = rows_to_dicts(conn.execute(f"SELECT * FROM exceptions WHERE app_id IN ({app_placeholders}) {exc_filter} ORDER BY last_seen DESC LIMIT 20", [*app_ids, *hidden_exc_ids]).fetchall())
+            for row in recent_errors_rows:
+                row.update({key: app_meta.get(row.get("app_id"), {}).get(key) for key in ("project_name", "service_name")})
+            recent_logs_rows = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT logs.* FROM logs
+                    WHERE logs.app_id IN ({app_placeholders}) {log_route_filter} {log_time_clause}
+                    ORDER BY timestamp DESC LIMIT ?
+                    """,
+                    [*app_ids, *hidden_route_ids, *log_params, log_limit],
+                ).fetchall()
+            )
+            for row in recent_logs_rows:
+                row.update({key: app_meta.get(row.get("app_id"), {}).get(key) for key in ("project_name", "service_name")})
+            routes_rows = rows_to_dicts(conn.execute(f"SELECT * FROM routes WHERE app_id IN ({app_placeholders}) {route_filter} ORDER BY last_seen DESC, p95_ms DESC LIMIT 60", [*app_ids, *hidden_route_ids]).fetchall())
+            for row in routes_rows:
+                row.update({key: app_meta.get(row.get("app_id"), {}).get(key) for key in ("project_name", "service_name")})
+            dependencies_rows = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT * FROM dependencies
+                    WHERE app_id IN ({app_placeholders}) {dep_filter}
+                      AND target NOT IN ('unknown', 'unknown-db')
+                      AND target IS NOT NULL
+                      AND target != ''
+                    ORDER BY call_count DESC LIMIT 40
+                    """,
+                    [*app_ids, *hidden_dep_ids],
+                ).fetchall()
+            )
+            for row in dependencies_rows:
+                row.update({key: app_meta.get(row.get("app_id"), {}).get(key) for key in ("project_name", "service_name")})
             return {
                 "apps": apps,
                 "totals": totals,
                 "event_kinds": by_kind,
                 "log_levels": by_level,
-                "recent_errors": recent_errors,
-                "recent_logs": recent_logs,
-                "routes": routes,
-                "dependencies": dependencies,
-                "log_window": {"minutes": log_window_minutes, "start": log_start, "limit": log_limit, "returned": len(recent_logs)},
+                "recent_errors": recent_errors_rows,
+                "recent_logs": recent_logs_rows,
+                "routes": routes_rows,
+                "dependencies": dependencies_rows,
+                "log_window": {"minutes": log_window_minutes, "start": log_start, "limit": log_limit, "returned": len(recent_logs_rows)},
                 "retention": {"days": retention_values["retention_days"], "database_bytes": storage},
             }
 
@@ -1361,9 +1378,9 @@ def create_router() -> APIRouter:
 
 
     @router.get("/api/errors/summary")
-    def errors_summary(project_name: str | None = None, app_id: str | None = None, log_window_minutes: int = Query(60, ge=0, le=43200), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> dict[str, Any]:
+    def errors_summary(project_name: str | None = None, app_id: str | None = None, log_window_minutes: int = Query(60, ge=0, le=43200), db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> dict[str, Any]:
         start = log_window_start(log_window_minutes)
-        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id, settings=settings)
         exc_clause, exc_params = hidden_preference_clause("exceptions", "exception", user_id, "exceptions.app_id")
         log_route_clause, log_route_params = hidden_route_clause(user_id, "logs.route_id", "logs.app_id")
         log_time_clause = "AND logs.timestamp >= ?" if start else ""
@@ -1384,8 +1401,8 @@ def create_router() -> APIRouter:
         return {"totals": totals, "by_type": by_type, "by_service": by_service, "window": {"minutes": log_window_minutes, "start": start}}
 
     @router.get("/api/errors/clusters")
-    def error_clusters(project_name: str | None = None, app_id: str | None = None, limit: int = Query(50, ge=1, le=200), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
-        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+    def error_clusters(project_name: str | None = None, app_id: str | None = None, limit: int = Query(50, ge=1, le=200), db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id, settings=settings)
         exc_clause, exc_params = hidden_preference_clause("exceptions", "exception", user_id, "exceptions.app_id")
         with db.connect() as conn:
             return rows_to_dicts(
@@ -1404,11 +1421,11 @@ def create_router() -> APIRouter:
             )
 
     @router.get("/api/errors/timeline")
-    def errors_timeline(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+    def errors_timeline(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
         start = iso(datetime.now(UTC) - timedelta(minutes=window_minutes))
         bucket = time_bucket("events.timestamp", bucket_minutes, is_postgres=db.is_postgres)
         exception_type = json_text("events.payload_json", "type", is_postgres=db.is_postgres)
-        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id, settings=settings)
         with db.connect() as conn:
             return rows_to_dicts(
                 conn.execute(
@@ -1426,9 +1443,9 @@ def create_router() -> APIRouter:
             )
 
     @router.get("/api/metrics/timeseries")
-    def metrics_timeseries(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
+    def metrics_timeseries(project_name: str | None = None, app_id: str | None = None, window_minutes: int = Query(1440, ge=1, le=43200), bucket_minutes: int = Query(15, ge=1, le=1440), db: Database = Depends(get_db), settings: Settings = Depends(get_settings), user_id: str = Depends(current_user)) -> list[dict[str, Any]]:
         start = iso(datetime.now(UTC) - timedelta(minutes=window_minutes))
-        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id)
+        app_clause, app_params = scoped_apps_filter(user_id, project_name=project_name, app_id=app_id, settings=settings)
         route_bucket = time_bucket("route_durations.timestamp", bucket_minutes, is_postgres=db.is_postgres)
         log_bucket = time_bucket("logs.timestamp", bucket_minutes, is_postgres=db.is_postgres)
         event_bucket = time_bucket("events.timestamp", bucket_minutes, is_postgres=db.is_postgres)

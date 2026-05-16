@@ -27,7 +27,7 @@ Instrumented app → runtime_observer SDK → /v1/ingest → ingest buffer (dire
 - Provide dashboard APIs for apps, routes, traces, logs, exceptions, dependencies, errors, metrics, and agent context.
 - Buffer ingest traffic before database writes. Local/test deployments can use direct or in-memory mode; Docker/local development can use LocalStack SQS; AWS deployments should use SQS with a DLQ.
 - Batch-process telemetry into raw tables plus hourly aggregate tables for route, dependency, and log metrics.
-- Apply retention cleanup during startup and periodically, respecting `collector_settings`-stored retention overrides and `retention_pins`.
+- Apply retention cleanup periodically on a background thread, respecting `collector_settings`-stored retention overrides and `retention_pins`.
 
 ## Persistence
 

@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from .agent import create_agent_router
 from .api import create_router, session_user
 from .config import Settings
 from .db import Database
@@ -42,6 +43,7 @@ async def _cleanup_loop(app_state: Any, settings: Settings) -> None:
                 exception_retention_days=settings.exception_retention_days,
                 aggregate_retention_days=settings.aggregate_retention_days,
             )
+            await asyncio.to_thread(app_state.database.optimize)
         except Exception:
             LOGGER.exception("retention cleanup failed")
             continue
@@ -88,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(create_router())
+    app.include_router(create_agent_router())
     return app
 
 

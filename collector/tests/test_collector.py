@@ -83,6 +83,35 @@ def login(client: TestClient, username: str = "admin", password: str = "secret")
     assert response.status_code == 200
 
 
+def _events_by_project(events: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for event in events:
+        service = event.get("service") if isinstance(event, dict) else None
+        project = (service or {}).get("project_name") or "default"
+        grouped.setdefault(project, []).append(event)
+    return grouped
+
+
+def ingest_per_project(client: TestClient, events: list[dict], *, login_first: bool = True) -> dict[str, str]:
+    """Ingest events using a per-project API key for each distinct project_name.
+
+    Requires the dashboard admin session so /api/projects/.../api-keys is reachable.
+    Returns a mapping of project_name -> api_key for follow-up assertions.
+    """
+    if login_first:
+        login(client)
+    keys: dict[str, str] = {}
+    for project, project_events in _events_by_project(events).items():
+        keys[project] = client.post(f"/api/projects/{project}/api-keys").json()["api_key"]
+        response = client.post(
+            "/v1/ingest",
+            headers={"Authorization": f"Bearer {keys[project]}"},
+            json={"events": project_events},
+        )
+        assert response.status_code == 200, response.text
+    return keys
+
+
 def sample_events():
     service = {"project_name": "internal-assistant", "name": "backend", "display_name": "Sample API", "language": "python", "runtime_version": "3.11", "sdk_version": "0.1.0"}
     return [
@@ -196,12 +225,52 @@ def test_project_api_keys_scope_ingest_by_project(tmp_path):
     assert "api_key" not in keys[0]
 
 
+def test_ingest_rejects_missing_invalid_and_admin_keys(tmp_path):
+    """Ingest must require a valid project API key — no header, bad key, and the admin key all 401."""
+    client = make_client(tmp_path)
+    events = sample_events()
+
+    # No Authorization header
+    assert client.post("/v1/ingest", json={"events": events}).status_code == 401
+    # Garbage token
+    assert client.post(
+        "/v1/ingest",
+        headers={"Authorization": "Bearer not-a-real-key"},
+        json={"events": events},
+    ).status_code == 401
+    # Legacy collector-wide admin key is rejected for ingest
+    assert client.post(
+        "/v1/ingest",
+        headers={"Authorization": "Bearer test-key"},
+        json={"events": events},
+    ).status_code == 401
+
+    # And none of those rejected requests created a project entry in the dashboard.
+    login(client)
+    assert client.get("/api/projects").json() == []
+    assert client.get("/api/apps").json() == []
+
+
+def test_projects_endpoint_hides_unregistered_projects(tmp_path):
+    """A project_name with apps but no registered API key must not appear in the dashboard."""
+    client = make_client(tmp_path)
+    login(client)
+    # Seed `apps` directly to mimic legacy / leaked data that landed before key enforcement.
+    settings = Settings(api_key="test-key", dashboard_username="admin", dashboard_password="secret", database_path=tmp_path / "collector.sqlite3")
+    db = Database(settings.database_path)
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO apps(id, project_name, service_name, first_seen, last_seen, metadata_json) VALUES(?,?,?,?,?,?)",
+            ("ghost-app", "ghost-project", "ghost", "now", "now", "{}"),
+        )
+
+    assert all(p["project_name"] != "ghost-project" for p in client.get("/api/projects").json())
+    assert all(a["project_name"] != "ghost-project" for a in client.get("/api/apps").json())
+
+
 def test_delete_project_removes_telemetry_and_keys(tmp_path):
     client = make_client(tmp_path)
-    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})
-    assert response.status_code == 200
-    login(client)
-    client.post("/api/projects/shop/api-keys")
+    ingest_per_project(client, correlated_events())
 
     response = client.delete("/api/projects/shop")
     assert response.status_code == 200
@@ -215,9 +284,7 @@ def test_delete_project_removes_telemetry_and_keys(tmp_path):
 
 def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
     client = make_client(tmp_path)
-    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": correlated_events()})
-    assert response.status_code == 200
-    login(client)
+    ingest_per_project(client, correlated_events())
     apps = client.get("/api/apps").json()
     app_by_name = {app["service_name"]: app for app in apps}
 
@@ -240,10 +307,7 @@ def test_correlated_logs_level_filtering_and_app_project_scope(tmp_path):
 
 def test_error_dashboard_aggregation_endpoints_respect_scope(tmp_path):
     client = make_client(tmp_path)
-    events = [*sample_events(), *correlated_events()]
-    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": events})
-    assert response.status_code == 200
-    login(client)
+    ingest_per_project(client, [*sample_events(), *correlated_events()])
 
     summary = client.get("/api/errors/summary", params={"log_window_minutes": 0, "project_name": "internal-assistant"}).json()
     assert summary["totals"]["exception_count"] == 1
@@ -272,13 +336,20 @@ def test_error_dashboard_aggregation_endpoints_respect_scope(tmp_path):
 def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     client = make_client(tmp_path)
     assert client.post("/v1/ingest", json={"events": []}).status_code == 401
+    # Legacy collector-wide admin key must be rejected for ingest — only project API keys authorize.
+    assert client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": sample_events()}).status_code == 401
+    assert client.get("/api/apps").status_code == 401
 
-    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"batch_id": "batch-1", "events": sample_events()})
+    login(client)
+    project_key = client.post("/api/projects/internal-assistant/api-keys").json()["api_key"]
+    response = client.post(
+        "/v1/ingest",
+        headers={"Authorization": f"Bearer {project_key}"},
+        json={"batch_id": "batch-1", "events": sample_events()},
+    )
     assert response.status_code == 200
     assert response.json()["accepted"] == len(sample_events())
 
-    assert client.get("/api/apps").status_code == 401
-    login(client)
     apps = client.get("/api/apps").json()
     assert len(apps) == 1
     assert apps[0]["project_name"] == "internal-assistant"
@@ -340,9 +411,7 @@ def semantic_trace_events():
 
 def test_trace_map_includes_semantic_groups_gaps_and_duplicates(tmp_path):
     client = make_client(tmp_path)
-    response = client.post("/v1/ingest", headers={"Authorization": "Bearer test-key"}, json={"events": semantic_trace_events()})
-    assert response.status_code == 200
-    login(client)
+    ingest_per_project(client, semantic_trace_events())
 
     trace_map = client.get("/api/traces/trace-sem/map").json()
 
@@ -418,3 +487,71 @@ def test_hidden_route_preferences_are_per_user(tmp_path):
     restore = client.delete(f"/api/preferences/hidden/route/{route['id']}", params={"app_id": route["app_id"]}, headers=alice)
     assert restore.status_code == 200
     assert client.get("/api/entrypoints", headers=alice).json()[0]["id"] == route["id"]
+
+
+def _provision_agent_project(tmp_path, project: str = "shop") -> tuple[TestClient, str]:
+    client = make_client(tmp_path)
+    keys = ingest_per_project(client, correlated_events())
+    return client, keys[project]
+
+
+def test_agent_api_rejects_missing_or_invalid_keys(tmp_path):
+    client, _ = _provision_agent_project(tmp_path)
+    assert client.get("/v1/agent/info").status_code == 401
+    assert client.get("/v1/agent/info", headers={"Authorization": "Bearer not-a-key"}).status_code == 401
+    # Legacy collector-wide admin key must be rejected for the agent API
+    assert client.get("/v1/agent/info", headers={"Authorization": "Bearer test-key"}).status_code == 401
+
+
+def test_agent_api_info_apps_and_routes_are_project_scoped(tmp_path):
+    client, shop_key = _provision_agent_project(tmp_path, "shop")
+    info = client.get("/v1/agent/info", headers={"Authorization": f"Bearer {shop_key}"}).json()
+    assert info["project_name"] == "shop"
+    services = {app["service_name"] for app in info["apps"]}
+    assert services == {"backend", "worker"}
+
+    apps = client.get("/v1/agent/apps", headers={"Authorization": f"Bearer {shop_key}"}).json()
+    assert {app["service_name"] for app in apps} == {"backend", "worker"}
+    assert all(app["project_name"] == "shop" for app in apps)
+
+    routes = client.get("/v1/agent/routes", headers={"Authorization": f"Bearer {shop_key}"}).json()
+    assert all(route.get("service_name") in {"backend", "worker"} for route in routes)
+
+
+def test_agent_api_logs_and_exceptions_are_filterable(tmp_path):
+    client, shop_key = _provision_agent_project(tmp_path, "shop")
+    auth = {"Authorization": f"Bearer {shop_key}"}
+
+    all_logs = client.get("/v1/agent/logs", headers=auth).json()
+    messages = {log["message"] for log in all_logs}
+    assert "checkout started" in messages
+    assert "payment failed" in messages
+    assert "other project noise" not in messages
+
+    error_logs = client.get("/v1/agent/logs", headers=auth, params={"level": "ERROR"}).json()
+    assert {log["message"] for log in error_logs} == {"payment failed", "retry queued"}
+
+    search_hits = client.get("/v1/agent/search", headers=auth, params={"q": "payment", "window_minutes": 43200}).json()
+    assert any("payment" in log["message"] for log in search_hits["logs"])
+
+    trace = client.get("/v1/agent/traces/trace-corr", headers=auth).json()
+    assert trace["trace_id"] == "trace-corr"
+    assert any(log.get("message") == "payment failed" for log in trace["logs"])
+
+    context = client.get("/v1/agent/traces/trace-corr/context", headers=auth).json()
+    assert "trace-corr" in context["text"]
+
+
+def test_agent_api_rejects_cross_project_trace_lookup(tmp_path):
+    # Provision both projects so other-project data exists
+    client = make_client(tmp_path)
+    keys = ingest_per_project(client, correlated_events())
+    shop_key = keys["shop"]
+    other_key = keys["other"]
+
+    # `other` project has no trace-corr — must 404 even though it exists in `shop`
+    other_lookup = client.get("/v1/agent/traces/trace-corr", headers={"Authorization": f"Bearer {other_key}"})
+    assert other_lookup.status_code == 404
+
+    shop_lookup = client.get("/v1/agent/traces/trace-corr", headers={"Authorization": f"Bearer {shop_key}"})
+    assert shop_lookup.status_code == 200
