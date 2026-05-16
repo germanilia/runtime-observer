@@ -246,6 +246,7 @@ a{color:inherit;text-decoration:none}
 .t-side-search::placeholder{color:var(--dim)}
 .t-side-search:disabled{opacity:.45;cursor:not-allowed}
 .t-side-list{flex:1;min-height:0;overflow-y:auto}
+.error-cluster-list{flex:1;min-height:0;overflow-y:auto}
 .t-side-row{padding:8px 12px;border-bottom:1px solid var(--rule);cursor:pointer;transition:background .08s;display:flex;flex-direction:column;gap:3px;border-left:2px solid transparent}
 .t-side-row:hover{background:var(--bg-2)}
 .t-side-row.active{background:var(--signal-soft);border-left-color:var(--signal)}
@@ -1825,7 +1826,7 @@ function renderErrors(){
       '<div class="page-body" style="padding-top:0">' +
         '<div class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="panel-title">▰ Error timeline · 24h</span></div><div class="panel-body" id="errTimelineBody"></div></div>' +
         '<div class="split t-list" style="height:calc(100vh - 360px);border:1px solid var(--rule);border-top:1px solid var(--rule)">' +
-          '<div class="col">' + clusterListHTML + '</div>' +
+          '<div class="col"><div class="error-cluster-list">' + clusterListHTML + '</div></div>' +
           '<div class="col">' + (detailHTML || '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>Pick a cluster to inspect.</p></div>') + '</div>' +
         '</div>' +
       '</div>' +
