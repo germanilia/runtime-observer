@@ -66,3 +66,28 @@ Dashboard routes require a session cookie unless insecure dev mode is enabled. T
 | `POST` | `/api/agent/{tool_name}` | Dispatches an agent tool call with JSON body `{ "app_id": "...", ... }`. |
 
 Available tool names: `get_application_map`, `get_route_summary`, `get_trace`, `get_trace_agent_context`, `get_log_agent_context`, `get_dependency_context`, `get_dependency_agent_context`, `get_exception_context`, `get_slowest_routes`, `get_failing_routes`, `get_dependency_map`, `get_llm_usage`, `search_logs`, `search_events`.
+
+## Project-scoped agent API
+
+The `/v1/agent/*` endpoints expose a read-only, project-scoped view of collector data for autonomous agents. Every endpoint requires `Authorization: Bearer <project-api-key>` — the collector-wide admin key is rejected on purpose. Results are always filtered to the project that the API key belongs to.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/v1/agent/info` | Project metadata plus the list of apps reporting under it. |
+| `GET` | `/v1/agent/apps` | Full app rows for the project. |
+| `GET` | `/v1/agent/overview` | Totals, recent errors and logs, top slow/failing routes. Accepts `log_window_minutes`, `log_limit`. |
+| `GET` | `/v1/agent/routes` | Routes within the project. Accepts `app_id`, `with_errors_only`, `limit`. |
+| `GET` | `/v1/agent/traces` | Recent traces. Accepts `app_id`, `route_id`, `has_error`, `start`, `end`, `limit`. |
+| `GET` | `/v1/agent/traces/{trace_id}` | Full trace map (events, spans, logs, exceptions, dependencies). Append `?slim=true` for a stripped-down payload. |
+| `GET` | `/v1/agent/traces/{trace_id}/context` | Markdown (default) or JSON context summary for a trace. Accepts `format=markdown|json`. |
+| `GET` | `/v1/agent/logs` | Log search scoped to the project. Accepts `app_id`, `trace_id`, `route_id`, `level`, `logger`, `text`, `start`, `end`, `limit`. |
+| `GET` | `/v1/agent/logs/{log_id}` | Single log record plus nearby context. Accepts `window_seconds`, `nearby_limit`. |
+| `GET` | `/v1/agent/exceptions` | Exception clusters. Accepts `app_id`, `type`, `limit`. |
+| `GET` | `/v1/agent/exceptions/{exception_id}` | Exception detail with sample trace and correlated logs. Append `?include_trace=false` to skip trace assembly. |
+| `GET` | `/v1/agent/errors/summary` | Aggregated error totals by type and service. Accepts `app_id`, `window_minutes`. |
+| `GET` | `/v1/agent/errors/timeline` | Bucketed exception event counts. Accepts `app_id`, `window_minutes`, `bucket_minutes`. |
+| `GET` | `/v1/agent/dependencies` | Dependency aggregates. Accepts `app_id`, `dependency_type`, `target`, `with_errors_only`, `limit`. |
+| `GET` | `/v1/agent/dependencies/{dependency_id}` | Dependency detail with sample events and error samples. Accepts `sample_limit`. |
+| `GET` | `/v1/agent/llm-usage` | LLM call aggregates grouped by model or provider. Accepts `app_id`, `group_by=model|provider`. |
+| `GET` | `/v1/agent/metrics/timeseries` | Merged request/log/exception time series. Accepts `app_id`, `window_minutes`, `bucket_minutes`. |
+| `GET` | `/v1/agent/search` | Free-text search across logs and exception messages. Accepts `q`, `level`, `app_id`, `window_minutes`, `limit`. |
