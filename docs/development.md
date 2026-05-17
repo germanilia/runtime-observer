@@ -21,6 +21,9 @@ The root `justfile` delegates to each project area:
 - `python-sdk/` tests validate SDK config, redaction, context propagation, and instrumentation.
 - `collector/` tests validate ingestion, auth, dashboard APIs, redaction, and clearing data.
 - `schemas/` tests validate every checked-in example against the schema and secret rules.
+- `js-sdk/` tests run via `just test-js-sdk` (delegates to `npm test`) and validate the browser/Node SDK.
+
+Use `just pack-js-sdk` to produce a local tarball of the JavaScript SDK for installing into another project, and `just deploy-homeserver` to build the collector image and ship it to the homeserver (see `docs/deployment.md`).
 
 ## Running locally
 

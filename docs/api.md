@@ -55,7 +55,7 @@ Dashboard routes require a session cookie unless insecure dev mode is enabled. T
 | `GET` | `/api/traces/{trace_id}/map` | Full causal map: spans, events, exact logs, dependencies, nearby background logs, a `flow` graph, plus insight fields `dependency_groups`, `relationship_loader_groups`, `slow_gap_markers`, and `duplicate_candidates`. |
 | `GET` | `/api/traces/{trace_id}/correlated-logs` | Cross-app trace logs grouped by app/service with `level`, comma-separated `app_ids`, `same_project`, `window_seconds`, and `limit` filters plus exact-vs-nearby correlation metadata. |
 | `GET` | `/api/traces/{trace_id}/agent-context` | Markdown context for agent-assisted debugging of a trace. |
-| `GET` | `/api/dependencies/{dependency_id}/context` | Dependency samples, error samples, and nearby logs. |
+| `GET` | `/api/dependencies/{dependency_id}/context` | Dependency detail: `stats` (count/min/max/avg/p50/p95/p99/calls_per_min), `status_distribution` (HTTP 1xx–5xx buckets), `top_paths` (for HTTP dependencies), hourly `time_series`, recent `samples`, `error_samples`, and nearby `related_logs`. |
 | `GET` | `/api/dependencies/{dependency_id}/agent-context` | Markdown context for agent-assisted debugging of a dependency. |
 | `GET` | `/api/logs/{log_id}/agent-context` | Markdown context for agent-assisted debugging of a log entry. |
 | `POST` | `/api/admin/clear` | Clear collector telemetry data; session cookie required. |
