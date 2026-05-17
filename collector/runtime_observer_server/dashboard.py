@@ -245,6 +245,11 @@ a{color:inherit;text-decoration:none}
 .t-side-search:focus{outline:none;border-color:var(--signal)}
 .t-side-search::placeholder{color:var(--dim)}
 .t-side-search:disabled{opacity:.45;cursor:not-allowed}
+.t-sort-bar{display:flex;align-items:center;gap:4px;padding:6px 10px;border-bottom:1px solid var(--rule);flex:none;background:var(--bg-2)}
+.t-sort-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);font-weight:600;margin-right:4px}
+.t-sort-btn{flex:none;padding:3px 8px;font-size:10.5px;font-family:var(--mono);color:var(--muted);background:var(--panel);border:1px solid var(--rule-2);transition:color .1s,background .1s,border-color .1s;cursor:pointer;line-height:1.4}
+.t-sort-btn:hover{color:var(--ink);border-color:var(--rule-2)}
+.t-sort-btn.active{background:var(--signal);color:#0a0b0d;border-color:var(--signal)}
 .t-side-list{flex:1;min-height:0;overflow-y:auto}
 .error-cluster-list{flex:1;min-height:0;overflow-y:auto}
 .t-side-row{padding:8px 12px;border-bottom:1px solid var(--rule);cursor:pointer;transition:background .08s;display:flex;flex-direction:column;gap:3px;border-left:2px solid transparent}
@@ -648,6 +653,8 @@ var S = {
   tracesPageSize: 25,
   tracesRoutesCollapsed: localStorage.getItem("ro:tracesRoutesCollapsed") === "1",
   tracesCallsCollapsed: localStorage.getItem("ro:tracesCallsCollapsed") === "1",
+  tracesRouteSort: localStorage.getItem("ro:tracesRouteSort") === "recent" ? "recent" : "calls",
+  tracesCallSort: localStorage.getItem("ro:tracesCallSort") === "duration" ? "duration" : "recent",
   railExpanded: localStorage.getItem("ro:railExpanded") === "1",
   routesSort: { col: "calls", dir: "desc" },
   routesMethodFilter: "",
@@ -803,16 +810,15 @@ async function refresh(){
   try {
     var scope = S.selectedProject ? "&project_name=" + encodeURIComponent(S.selectedProject) : "";
     var appScope = S.selectedApp && S.selectedApp !== "all" ? "&app_id=" + encodeURIComponent(S.selectedApp) : "";
-    var results = await Promise.all([
+
+    // Paint the app/project shell as soon as the critical data is ready. The
+    // heavier secondary panels (entrypoints, error charts, preferences) load
+    // right after without blocking the initial app list from appearing.
+    var critical = await Promise.all([
       api("/api/overview?" + logWindowQuery()),
       api("/api/projects"),
-      api("/api/entrypoints?include_hidden=true"),
-      api("/api/preferences/hidden"),
-      api("/api/errors/clusters?limit=200" + scope + appScope),
-      api("/api/errors/timeline?window_minutes=1440&bucket_minutes=60" + scope + appScope),
-      api("/api/metrics/timeseries?window_minutes=" + Math.max(60, S.windowMinutes || 1440) + "&bucket_minutes=" + bucketSize() + scope + appScope),
     ]);
-    var ov = results[0];
+    var ov = critical[0];
     S.apps = ov.apps || [];
     S.routes = ov.routes || [];
     S.deps = ov.dependencies || [];
@@ -821,17 +827,26 @@ async function refresh(){
     S.eventKinds = ov.event_kinds || [];
     S.logLevels = ov.log_levels || [];
     S.totals = ov.totals || {};
-    S.projects = results[1] || [];
-    S.entries = results[2] || [];
-    S.hiddenPrefs = results[3] || [];
-    S.errorClusters = results[4] || [];
-    S.errorTimeline = results[5] || [];
-    S.metricsSeries = results[6] || [];
+    S.projects = critical[1] || [];
     if (S.selectedProject && !S.projects.some(function(p){ return p.project_name === S.selectedProject; })){
       S.selectedProject = "";
     }
-    if (S.selectedRouteId) await loadRoute(S.selectedRouteId, false);
     $("liveDot").classList.remove("error");
+    render();
+
+    var secondary = await Promise.all([
+      api("/api/entrypoints?include_hidden=true"),
+      api("/api/preferences/hidden"),
+      api("/api/errors/clusters?limit=200" + scope + appScope),
+      api("/api/errors/timeline?window_minutes=1440&bucket_minutes=60" + scope + appScope),
+      api("/api/metrics/timeseries?window_minutes=" + Math.max(60, S.windowMinutes || 1440) + "&bucket_minutes=" + bucketSize() + scope + appScope),
+    ]);
+    S.entries = secondary[0] || [];
+    S.hiddenPrefs = secondary[1] || [];
+    S.errorClusters = secondary[2] || [];
+    S.errorTimeline = secondary[3] || [];
+    S.metricsSeries = secondary[4] || [];
+    if (S.selectedRouteId) await loadRoute(S.selectedRouteId, false);
     render();
   } catch(err){
     $("liveDot").classList.add("error");
@@ -1398,7 +1413,15 @@ function tracesRoutesList(){
       return ((r.route_pattern || "") + " " + (r.method || "") + " " + (r.service_name || "")).toLowerCase().includes(q);
     });
   }
-  rows.sort(function(a,b){ return Number(b.call_count||0) - Number(a.call_count||0); });
+  if (S.tracesRouteSort === "recent"){
+    rows.sort(function(a,b){
+      var ta = new Date(a.last_seen || 0).getTime() || 0;
+      var tb = new Date(b.last_seen || 0).getTime() || 0;
+      return tb - ta;
+    });
+  } else {
+    rows.sort(function(a,b){ return Number(b.call_count||0) - Number(a.call_count||0); });
+  }
   return rows;
 }
 function tracesCallsList(){
@@ -1408,6 +1431,15 @@ function tracesCallsList(){
     traces = traces.filter(function(t){
       var status = String(t.status_code || "");
       return (status + " " + (t.method||"") + " " + (t.route_pattern||"") + " " + (t.service_name||"") + " " + (t.id||"")).toLowerCase().includes(q);
+    });
+  }
+  if (S.tracesCallSort === "duration"){
+    traces.sort(function(a,b){ return Number(b.duration_ms||0) - Number(a.duration_ms||0); });
+  } else {
+    traces.sort(function(a,b){
+      var ta = new Date(a.finished_at || a.started_at || 0).getTime() || 0;
+      var tb = new Date(b.finished_at || b.started_at || 0).getTime() || 0;
+      return tb - ta;
     });
   }
   return traces;
@@ -1481,10 +1513,16 @@ function renderTraces(){
         '<span class="t-collapsed-count">' + num(routes.length) + '</span>' +
       '</div>';
     }
+    var routeSortBar = '<div class="t-sort-bar" role="group" aria-label="Sort routes">' +
+      '<span class="t-sort-label">Sort</span>' +
+      '<button class="t-sort-btn ' + (S.tracesRouteSort === "calls" ? "active" : "") + '" data-route-sort="calls" title="Sort by total calls">Calls</button>' +
+      '<button class="t-sort-btn ' + (S.tracesRouteSort === "recent" ? "active" : "") + '" data-route-sort="recent" title="Sort by most recently seen">Recent</button>' +
+    '</div>';
     return '<div class="t-side-head">' +
         '<input class="t-side-search" id="tracesRouteSearch" placeholder="search routes" value="' + esc(S.tracesRouteSearch || "") + '">' +
         '<button class="t-collapse-btn" data-collapse-toggle="routes" title="Collapse routes">‹</button>' +
       '</div>' +
+      routeSortBar +
       '<div class="t-side-list">' + routeListHTML + '</div>' +
       tracesPagerHTML(routePager, "routes");
   }
@@ -1496,10 +1534,16 @@ function renderTraces(){
         '<span class="t-collapsed-count">' + num(calls.length) + '</span>' +
       '</div>';
     }
+    var callSortBar = '<div class="t-sort-bar" role="group" aria-label="Sort calls">' +
+      '<span class="t-sort-label">Sort</span>' +
+      '<button class="t-sort-btn ' + (S.tracesCallSort === "recent" ? "active" : "") + '" data-call-sort="recent" title="Sort by most recent">Recent</button>' +
+      '<button class="t-sort-btn ' + (S.tracesCallSort === "duration" ? "active" : "") + '" data-call-sort="duration" title="Sort by slowest first">Duration</button>' +
+    '</div>';
     return '<div class="t-side-head">' +
         '<input class="t-side-search" id="tracesCallSearch" placeholder="search calls" value="' + esc(S.tracesCallSearch || "") + '"' + (S.selectedRouteId ? '' : ' disabled') + '>' +
         '<button class="t-collapse-btn" data-collapse-toggle="calls" title="Collapse calls">‹</button>' +
       '</div>' +
+      callSortBar +
       '<div class="t-side-list" id="traceListCol">' + callListHTML + '</div>' +
       tracesPagerHTML(callPager, "calls");
   }
@@ -1531,6 +1575,26 @@ function renderTraces(){
         S.tracesCallsCollapsed = !S.tracesCallsCollapsed;
         localStorage.setItem("ro:tracesCallsCollapsed", S.tracesCallsCollapsed ? "1" : "0");
       }
+      renderTraces();
+    };
+  });
+  document.querySelectorAll("[data-route-sort]").forEach(function(b){
+    b.onclick = function(){
+      var mode = b.dataset.routeSort === "recent" ? "recent" : "calls";
+      if (S.tracesRouteSort === mode) return;
+      S.tracesRouteSort = mode;
+      localStorage.setItem("ro:tracesRouteSort", mode);
+      S.tracesRoutePage = 1;
+      renderTraces();
+    };
+  });
+  document.querySelectorAll("[data-call-sort]").forEach(function(b){
+    b.onclick = function(){
+      var mode = b.dataset.callSort === "duration" ? "duration" : "recent";
+      if (S.tracesCallSort === mode) return;
+      S.tracesCallSort = mode;
+      localStorage.setItem("ro:tracesCallSort", mode);
+      S.tracesCallPage = 1;
       renderTraces();
     };
   });
