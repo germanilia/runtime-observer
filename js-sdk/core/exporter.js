@@ -49,11 +49,17 @@ export class BatchExporter {
     const body = JSON.stringify({ batch_id: events[0]?.event_id, events });
     if (this.browser) {
       const url = `${endpoint}/v1/ingest/browser?api_key=${encodeURIComponent(this.config.apiKey || '')}`;
-      if (globalThis.navigator?.sendBeacon) {
-        const sent = globalThis.navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
-        if (sent) return;
-      }
-      const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true });
+      // Do not use sendBeacon: it always attaches cookies for the target origin, which turns
+      // ingest into a credentialed cross-origin request and trips Access-Control-Allow-Origin: *.
+      // fetch with keepalive covers the page-unload case and lets us opt out of credentials.
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        keepalive: true,
+        credentials: 'omit',
+        mode: 'cors',
+      });
       if (!response.ok) throw new Error(`Runtime Observer ingest failed: ${response.status}`);
       return;
     }
