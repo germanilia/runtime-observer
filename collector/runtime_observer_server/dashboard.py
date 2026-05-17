@@ -257,6 +257,9 @@ a{color:inherit;text-decoration:none}
 .t-side-row.active{background:var(--signal-soft);border-left-color:var(--signal)}
 .t-side-row-line{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink);min-width:0}
 .t-side-row-line .truncate{flex:1;min-width:0}
+.t-side-row-actions{display:flex;align-items:center;gap:4px;flex:none}
+.t-side-row .icon-btn{width:22px;height:22px}
+.t-side-row .icon-btn svg{width:12px;height:12px}
 .t-side-row-meta{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;gap:8px}
 .t-side-pager{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-top:1px solid var(--rule);background:var(--bg-2);font-size:10.5px;color:var(--muted);flex:none;gap:8px}
 .t-pager-btn{padding:2px 9px;border:1px solid var(--rule-2);color:var(--muted);background:var(--panel);font-size:13px;line-height:1;transition:all .1s;font-family:var(--mono)}
@@ -1424,6 +1427,13 @@ function tracesRoutesList(){
   }
   return rows;
 }
+function hiddenRouteButtonHTML(r){
+  var isHidden = !!r.hidden;
+  var icon = isHidden
+    ? '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13 13 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13 13 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>';
+  return '<button class="icon-btn" data-hide-route="' + esc(r.id) + '" data-app="' + esc(r.app_id) + '" data-hidden="' + (isHidden ? "1" : "0") + '" title="' + (isHidden ? "Restore route" : "Hide route") + '" aria-label="' + (isHidden ? "Restore route" : "Hide route") + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + icon + '</svg></button>';
+}
 function tracesCallsList(){
   var traces = ((S.routeState && S.routeState.traces) || []).slice();
   var q = (S.tracesCallSearch || "").toLowerCase();
@@ -1471,7 +1481,7 @@ function renderTraces(){
     var isActive = r.id === S.selectedRouteId;
     var m = ["GET","POST","PUT","PATCH","DELETE"].indexOf(r.method) >= 0 ? r.method : "OTHER";
     return '<div class="t-side-row ' + (isActive ? "active" : "") + '" data-route="' + esc(r.id) + '">' +
-      '<div class="t-side-row-line"><span class="method method-' + m + '">' + esc(r.method) + '</span><span class="truncate">' + esc(r.route_pattern) + '</span></div>' +
+      '<div class="t-side-row-line"><span class="method method-' + m + '">' + esc(r.method) + '</span><span class="truncate">' + esc(r.route_pattern) + '</span><span class="t-side-row-actions">' + (r.hidden ? '<span class="chip dim">HIDDEN</span>' : '') + hiddenRouteButtonHTML(r) + '</span></div>' +
       '<div class="t-side-row-meta"><span class="truncate">' + esc(r.service_name || "—") + '</span><span>' + num(r.call_count) + '</span></div>' +
     '</div>';
   }).join("") : '<div class="empty" style="margin:14px"><p>' + (S.tracesRouteSearch ? "No routes match." : "No routes with traffic yet.") + '</p></div>';
@@ -1562,7 +1572,7 @@ function renderTraces(){
       '</div>' +
     '</div>';
 
-  document.querySelectorAll("[data-route]").forEach(function(b){ b.onclick = function(){ S.tracesCallSearch = ""; S.tracesCallPage = 1; withLoading(function(){ return selectRoute(b.dataset.route); }); }; });
+  document.querySelectorAll("[data-route]").forEach(function(b){ b.onclick = function(ev){ if (ev.target.closest("[data-hide-route]")) return; S.tracesCallSearch = ""; S.tracesCallPage = 1; withLoading(function(){ return selectRoute(b.dataset.route); }); }; });
   document.querySelectorAll("[data-trace]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return selectTrace(b.dataset.trace); }); }; });
   document.querySelectorAll("[data-collapse-toggle]").forEach(function(b){
     b.onclick = function(ev){
@@ -1596,6 +1606,12 @@ function renderTraces(){
       localStorage.setItem("ro:tracesCallSort", mode);
       S.tracesCallPage = 1;
       renderTraces();
+    };
+  });
+  document.querySelectorAll("[data-hide-route]").forEach(function(b){
+    b.onclick = async function(ev){
+      ev.stopPropagation();
+      await withLoading(function(){ return setHidden("route", b.dataset.hideRoute, b.dataset.app || null, b.dataset.hidden !== "1"); });
     };
   });
 
@@ -2037,7 +2053,7 @@ function renderRoutes(){
         '<td class="num">' + fmtMs(Number(r.p50_ms||0)) + '</td>' +
         '<td class="num">' + fmtMs(Number(r.p95_ms||0)) + '</td>' +
         '<td class="dim">' + esc(fmtRel(r.last_seen)) + '</td>' +
-        '<td><button class="icon-btn" data-hide-route="' + esc(r.id) + '" data-app="' + esc(r.app_id) + '" data-hidden="' + (r.hidden ? "1" : "0") + '" title="' + (r.hidden ? "Restore" : "Hide") + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + (r.hidden ? '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>' : '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13 13 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13 13 0 0 0 2 12s3 7 10 7a9.7 9.7 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>') + '</svg></button></td>' +
+        '<td>' + hiddenRouteButtonHTML(r) + '</td>' +
       '</tr>';
     }).join("") + '</tbody></table>'
     : '<div class="empty"><div class="ico">∅</div><p>No routes match your filters yet. Exercise the app and they will appear here.</p></div>';
