@@ -11,10 +11,11 @@ Lightweight telemetry contract, Python SDK, and local collector dashboard for ap
 
 ## Stack
 
-- **SDK**: Python package in `python-sdk/`.
+- **SDK**: Python package in `python-sdk/`; browser/Node.js SDK in `js-sdk/` (exported via the repo-root `package.json`, not yet published to npm).
 - **Collector**: FastAPI app in `collector/`, SQLite persistence, embedded dashboard HTML.
 - **Schemas**: JSON Schema plus example events in `schemas/`.
 - **Examples**: minimal FastAPI integration in `examples/python-fastapi-minimal/`.
+- **Deployments**: AWS via `scripts/deploy_ec2.sh`; single-container homeserver via `scripts/deploy-homeserver.sh` + `docker-compose.homeserver.yml` (see `deployments/homeserver/`).
 - **Task runner**: `just`.
 
 ## Architecture
@@ -48,6 +49,9 @@ Lightweight telemetry contract, Python SDK, and local collector dashboard for ap
 - `just test-python-sdk` — run SDK tests.
 - `just test-collector` — run collector tests.
 - `just test-schemas` — run schema example validation.
+- `just test-js-sdk` — run the browser/Node.js SDK tests (`npm test`).
+- `just pack-js-sdk` — produce a local JS SDK tarball for installing into another project.
+- `just deploy-homeserver` — build the collector image and ship it to the `homeserver` SSH alias (see `docs/deployment.md`).
 - `just compile` — compile Python packages.
 - `just lint` — current lint gate, delegates to compile.
 
