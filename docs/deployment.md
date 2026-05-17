@@ -63,6 +63,27 @@ export AWS_REGION=us-east-1
 
 Give the collector IAM permissions for `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, and `sqs:GetQueueAttributes` on the ingest queue. Messages are only deleted after successful database processing; repeated failures are moved to the DLQ.
 
+## Homeserver deployment (Docker Compose + NPM)
+
+For a single-container internal deployment behind Nginx Proxy Manager (NPM), use the `homeserver` workflow. It builds `Dockerfile.collector` locally, ships the image via SSH, and starts the stack with `docker-compose.homeserver.yml`.
+
+```bash
+just deploy-homeserver
+just deploy-homeserver --clean-volume   # wipe the SQLite volume first
+```
+
+The script (`scripts/deploy-homeserver.sh`) requires:
+
+- A `Host homeserver` SSH alias in `~/.ssh/config`.
+- Docker installed and running locally and on the homeserver.
+- An external docker network named `system_default` already present on the homeserver (NPM typically owns it).
+
+It builds for the remote architecture, `docker save | gzip | scp`s the image, then `docker compose up -d` on the homeserver. NPM forwards `https://metrics.homeserver` to `ro-collector:4319` over `system_default`, so no host port is published.
+
+Environment defaults live in `deployments/homeserver/env.homeserver` (loaded by the compose file via `env_file`). They pin `RUNTIME_OBSERVER_INGEST_QUEUE_BACKEND=direct`, persist SQLite to the `collector_data` named volume at `/data/runtime_observer.sqlite3`, and keep `RUNTIME_OBSERVER_INSECURE_DEV=false`. Replace any sensitive value before the first deploy and rotate by re-running `just deploy-homeserver`.
+
+Deployment metadata (`ssh_alias`, `domain`, `remote_dir`, `container_name`, `forward_hostname`, `forward_port`, `external_network`) lives in `deployments/homeserver/info.yml` for tooling that needs to discover the target.
+
 ## EC2 deployment
 
 The reproducible EC2 deployment is driven by:
