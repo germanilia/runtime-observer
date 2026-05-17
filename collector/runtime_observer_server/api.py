@@ -274,6 +274,124 @@ def _delete_project(conn, project_name: str) -> dict[str, int]:
     deleted["api_keys"] = conn.execute("DELETE FROM project_api_keys WHERE project_name=?", (project_name,)).rowcount
     return deleted
 
+def _percentile(sorted_values: list[float], pct: float) -> float:
+    if not sorted_values:
+        return 0.0
+    idx = int((len(sorted_values) - 1) * pct)
+    return float(sorted_values[idx])
+
+
+def _dependency_stats(conn: Any, dependency_id: str) -> dict[str, float]:
+    rows = conn.execute(
+        "SELECT duration_ms FROM dependency_durations WHERE dependency_id=? ORDER BY duration_ms LIMIT 10000",
+        (dependency_id,),
+    ).fetchall()
+    durations = sorted(float(row["duration_ms"]) for row in rows)
+    if not durations:
+        return {"count": 0, "min_ms": 0.0, "max_ms": 0.0, "avg_ms": 0.0, "p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0, "calls_per_min": 0.0}
+    span = conn.execute(
+        "SELECT MIN(timestamp) first_seen, MAX(timestamp) last_seen FROM dependency_durations WHERE dependency_id=?",
+        (dependency_id,),
+    ).fetchone()
+    calls_per_min = 0.0
+    if span and span["first_seen"] and span["last_seen"]:
+        try:
+            first = datetime.fromisoformat(str(span["first_seen"]).replace("Z", "+00:00"))
+            last = datetime.fromisoformat(str(span["last_seen"]).replace("Z", "+00:00"))
+            elapsed_min = max((last - first).total_seconds() / 60.0, 1.0 / 60.0)
+            calls_per_min = round(len(durations) / elapsed_min, 2)
+        except ValueError:
+            calls_per_min = 0.0
+    return {
+        "count": len(durations),
+        "min_ms": durations[0],
+        "max_ms": durations[-1],
+        "avg_ms": round(sum(durations) / len(durations), 2),
+        "p50_ms": _percentile(durations, 0.50),
+        "p95_ms": _percentile(durations, 0.95),
+        "p99_ms": _percentile(durations, 0.99),
+        "calls_per_min": calls_per_min,
+    }
+
+
+def _status_distribution(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets = {"1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, "other": 0}
+    for sample in samples:
+        payload = sample.get("payload") or {}
+        raw = payload.get("status_code")
+        if raw is None:
+            buckets["other"] += 1
+            continue
+        try:
+            code = int(raw)
+        except (TypeError, ValueError):
+            buckets["other"] += 1
+            continue
+        if 100 <= code < 200:
+            buckets["1xx"] += 1
+        elif 200 <= code < 300:
+            buckets["2xx"] += 1
+        elif 300 <= code < 400:
+            buckets["3xx"] += 1
+        elif 400 <= code < 500:
+            buckets["4xx"] += 1
+        elif 500 <= code < 600:
+            buckets["5xx"] += 1
+        else:
+            buckets["other"] += 1
+    return [{"bucket": name, "count": count} for name, count in buckets.items() if count > 0]
+
+
+def _top_paths(samples: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    by_path: dict[str, dict[str, Any]] = {}
+    for sample in samples:
+        payload = sample.get("payload") or {}
+        path = str(payload.get("path") or "/")
+        entry = by_path.setdefault(path, {"path": path, "count": 0, "error_count": 0, "_durations": []})
+        entry["count"] += 1
+        duration = payload.get("duration_ms")
+        if isinstance(duration, (int, float)):
+            entry["_durations"].append(float(duration))
+        raw = payload.get("status_code")
+        try:
+            code = int(raw) if raw is not None else 0
+        except (TypeError, ValueError):
+            code = 0
+        if payload.get("error") or payload.get("error_type") or payload.get("error_message") or code >= 400:
+            entry["error_count"] += 1
+    rows: list[dict[str, Any]] = []
+    for entry in by_path.values():
+        durations = sorted(entry.pop("_durations"))
+        entry["avg_ms"] = round(sum(durations) / len(durations), 2) if durations else 0.0
+        entry["p95_ms"] = _percentile(durations, 0.95)
+        rows.append(entry)
+    rows.sort(key=lambda row: row["count"], reverse=True)
+    return rows[:limit]
+
+
+def _dependency_time_series(conn: Any, dependency_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT bucket_start, call_count, error_count, total_duration_ms
+        FROM dependency_metrics_hourly
+        WHERE dependency_id=?
+        ORDER BY bucket_start ASC
+        """,
+        (dependency_id,),
+    ).fetchall()
+    series: list[dict[str, Any]] = []
+    for row in rows:
+        calls = int(row["call_count"] or 0)
+        total = float(row["total_duration_ms"] or 0)
+        series.append({
+            "bucket_start": row["bucket_start"],
+            "call_count": calls,
+            "error_count": int(row["error_count"] or 0),
+            "avg_ms": round(total / calls, 2) if calls else 0.0,
+        })
+    return series
+
+
 def _dependency_key_from_event(event: dict[str, Any]) -> tuple[str, str, str, str] | None:
     try:
         payload = json.loads(event.get("payload_json") or "{}")
@@ -1227,7 +1345,20 @@ def create_router() -> APIRouter:
                 else:
                     related_logs.extend(logs_around(conn, event.get("timestamp"), window_seconds=30, limit=40))
             by_id = {log.get("id"): log for log in related_logs if log.get("id")}
-            return {"dependency": dependency, "samples": samples[:50], "error_samples": error_samples[:25], "related_logs": list(by_id.values())[:120]}
+            stats = _dependency_stats(conn, dependency_id)
+            status_distribution = _status_distribution(samples)
+            top_paths = _top_paths(samples) if dependency.get("dependency_type") == "http" else []
+            time_series = _dependency_time_series(conn, dependency_id)
+            return {
+                "dependency": dependency,
+                "stats": stats,
+                "status_distribution": status_distribution,
+                "top_paths": top_paths,
+                "time_series": time_series,
+                "samples": samples[:50],
+                "error_samples": error_samples[:25],
+                "related_logs": list(by_id.values())[:120],
+            }
 
     @router.get("/api/dependencies/{dependency_id}/agent-context")
     def dependency_agent_context(dependency_id: str, db: Database = Depends(get_db)) -> dict[str, str]:
@@ -1555,7 +1686,10 @@ def create_router() -> APIRouter:
         raise HTTPException(status_code=404, detail="unknown agent tool")
 
     @router.get("/", response_class=HTMLResponse)
-    def dashboard() -> str:
-        return DASHBOARD_HTML
+    def dashboard() -> HTMLResponse:
+        return HTMLResponse(
+            content=DASHBOARD_HTML,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
     return router

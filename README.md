@@ -71,9 +71,9 @@ Important settings:
 - `RUNTIME_OBSERVER_SECRETS` — path to `secrets.yml`; the database connection string lives there.
 - `RUNTIME_OBSERVER_DATABASE_URL` — override the database URL directly (SQLite path or `postgres://…` URL); takes precedence over `secrets.yml`.
 - `RUNTIME_OBSERVER_ENDPOINT` — SDK collector base URL, for example `http://127.0.0.1:4319`.
-- `RUNTIME_OBSERVER_PROJECT_NAME` — project shown on the post-login project selection screen. **Required** for SDK export to be enabled.
-- `RUNTIME_OBSERVER_SERVICE_NAME` — app/service name inside the project.
-- `RUNTIME_OBSERVER_API_KEY` — project SDK key generated in the dashboard and stored hashed in the DB.
+- `RUNTIME_OBSERVER_API_KEY` — project SDK key generated in the dashboard and stored hashed in the DB. The collector uses this key to choose the project.
+- `RUNTIME_OBSERVER_PROJECT_NAME` — deprecated legacy SDK setting. Current collectors ignore the SDK-sent project name and resolve the project from the API key.
+- `RUNTIME_OBSERVER_SERVICE_NAME` — app/service name inside the project. This remains important for separating apps under the API-key project.
 - `RUNTIME_OBSERVER_INSECURE_DEV` — disables auth only for local development.
 - `RUNTIME_OBSERVER_RETENTION_DAYS` — days of raw event data to keep (default `7`). Also configurable via `PUT /api/settings`.
 - `RUNTIME_OBSERVER_RETENTION_MIN_LOG_MINUTES` — minimum recency window for logs preserved during cleanup (default `60`).

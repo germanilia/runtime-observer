@@ -36,6 +36,14 @@
         "name": {
           "type": "string"
         },
+        "project_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "deprecated": true,
+          "description": "Deprecated legacy SDK field. Collectors resolve project identity from the project API key and ignore this value."
+        },
         "language": {
           "type": "string"
         },

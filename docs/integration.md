@@ -68,7 +68,7 @@ Dashboard users and sessions are stored in the collector SQLite database. Bootst
 
 Ingestion is separate from dashboard login. SDKs authenticate with project-scoped API keys generated in the dashboard and saved hashed in the SQLite database.
 
-Project keys are scoped to one `project_name`; if an SDK sends events with a different project name the collector overrides `service.project_name` in every event to match the key's project, so events are always stored under the correct project regardless of what the SDK sent. Browser ingestion sends the same key as `?api_key=...` to `/v1/ingest/browser` because browsers cannot safely set long-lived bearer headers for beacon-style calls.
+Project keys are scoped to one `project_name`. The collector identifies the project from the API key and overrides `service.project_name` in every event to match that project, so the SDK-sent project name is ignored. Browser ingestion sends the same key as `?api_key=...` to `/v1/ingest/browser` because browsers cannot safely set long-lived bearer headers for beacon-style calls.
 
 For local-only experiments you can run with `RUNTIME_OBSERVER_INSECURE_DEV=true` or `--insecure-dev`, but do not expose that mode outside localhost.
 
@@ -76,21 +76,21 @@ For local-only experiments you can run with `RUNTIME_OBSERVER_INSECURE_DEV=true`
 
 1. Start the collector and open `http://127.0.0.1:4319/`.
 2. Sign in. The first login creates the admin user; future logins require those credentials.
-3. If this is a brand-new collector with no projects yet, click **Create first project SDK key** and enter the exact project name your app will send.
+3. If this is a brand-new collector with no projects yet, click **Create first project SDK key** and enter the project name you want attached to that key.
 4. After data exists, login opens the **project selection** screen. Choose a project to inspect only that project's apps, routes, traces, logs, dependencies, and errors.
 5. Use **Generate SDK API key** on the project card or inside the selected project. Copy it immediately; only the prefix is shown later.
-6. Give the agent these four values: collector base URL, project name, service/app name, and project API key.
+6. Give the agent these three required values: collector base URL, service/app name, and project API key. The project name is implied by the key.
 
 ## Python/FastAPI integration
 
-Use the same `project_name` for all services that should appear under one dashboard project, and use different `service_name` values for each app (`backend`, `worker`, `frontend`, and so on). The project name must exactly match the project SDK key scope in the collector.
+Use the same project API key for all services that should appear under one dashboard project, and use different `service_name` values for each app (`backend`, `worker`, `frontend`, and so on). The SDK `project_name` setting is deprecated and ignored by current collectors; the key decides the project.
 
 Install the SDK into your application environment, then configure it with the collector base URL. Do not include `/v1/ingest` in `RUNTIME_OBSERVER_ENDPOINT`; the SDK appends that path.
 
 ```bash
 export RUNTIME_OBSERVER_ENDPOINT='http://127.0.0.1:4319'
 export RUNTIME_OBSERVER_API_KEY='ro_xxxxxxxx_project_key_from_dashboard'
-export RUNTIME_OBSERVER_PROJECT_NAME='checkout'
+# RUNTIME_OBSERVER_PROJECT_NAME is deprecated; the API key selects the project.
 export RUNTIME_OBSERVER_SERVICE_NAME='orders-api'
 export RUNTIME_OBSERVER_CAPTURE_MODE='dev'
 ```
@@ -103,7 +103,6 @@ from runtime_observer import init_runtime_observer
 
 app = FastAPI()
 observer = init_runtime_observer.from_env(
-    project_name="checkout",      # optional if env var is set
     service_name="orders-api",    # app/service name shown in the UI
     api_key="ro_xxxxxxxx_project_key_from_dashboard",  # optional if env var is set
     endpoint="http://127.0.0.1:4319",                  # optional if env var is set
@@ -135,7 +134,6 @@ For workers, CLIs, background jobs, or scripts, initialize the observer and emit
 from runtime_observer import init_runtime_observer
 
 observer = init_runtime_observer.from_env(
-    project_name="checkout",
     service_name="billing-worker",
 )
 
@@ -460,9 +458,9 @@ Useful endpoints:
 
 ## Troubleshooting
 
-- **No events appear:** confirm the collector is running, `RUNTIME_OBSERVER_ENDPOINT` is the collector base URL, `RUNTIME_OBSERVER_PROJECT_NAME` exactly matches the project key scope, and the API key was copied from the project screen.
+- **No events appear:** confirm the collector is running, `RUNTIME_OBSERVER_ENDPOINT` is the collector base URL, `RUNTIME_OBSERVER_SERVICE_NAME` is set, and the API key was copied from the intended project screen.
 - **401 on ingest:** set `Authorization: Bearer <RUNTIME_OBSERVER_API_KEY>` for `/v1/ingest`, or pass `?api_key=...` to `/v1/ingest/browser`.
-- **Events land in wrong project:** if `RUNTIME_OBSERVER_PROJECT_NAME` doesn't match the key's project the collector silently overrides it — check the project name shown in the dashboard and ensure you're using the key for the intended project.
+- **Events land in wrong project:** the collector ignores SDK `project_name`; check that you're using the API key generated for the intended dashboard project.
 - **Dashboard asks for auth:** sign in with the first admin credentials you created on initial login. The ingest bearer key is separate from dashboard login.
 - **Double `/v1/ingest/v1/ingest` URL:** remove `/v1/ingest` from `RUNTIME_OBSERVER_ENDPOINT`.
 - **No exports in local dev:** provide an API key or set `RUNTIME_OBSERVER_INSECURE_DEV=true` for SDK experiments.

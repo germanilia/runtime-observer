@@ -273,9 +273,16 @@ a{color:inherit;text-decoration:none}
 .wf-tab.active{color:var(--signal);border-bottom-color:var(--signal)}
 
 .wf-bars{display:flex;flex-direction:column;gap:1px}
-.wf-bar{display:grid;grid-template-columns:200px 1fr 60px;gap:10px;padding:5px 0;align-items:center;font-size:11px;border-bottom:1px solid var(--rule)}
+.wf-bar{display:grid;grid-template-columns:56px minmax(180px,280px) minmax(120px,1fr) 64px;gap:10px;padding:5px 0;align-items:center;font-size:11px;border-bottom:1px solid var(--rule);cursor:pointer;transition:background .08s}
 .wf-bar:hover{background:var(--bg-2)}
-.wf-bar .name{display:flex;align-items:center;gap:6px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-bar:focus-visible{outline:1px solid var(--signal);outline-offset:-1px;background:var(--bg-2)}
+.wf-bar.is-open{background:var(--bg-2)}
+.wf-bar .offset{color:var(--dim);font-variant-numeric:tabular-nums;text-align:right;padding-right:4px;border-right:1px solid var(--rule)}
+.wf-bar .name{display:flex;align-items:center;gap:6px;color:var(--ink);min-width:0}
+.wf-bar .name .indent{flex:none;color:var(--dim);font-family:var(--mono)}
+.wf-bar .name .label-col{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.wf-bar .name .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.wf-bar .name .sublabel{font-size:10px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
 .wf-bar .name .kind{font-size:9px;padding:1px 4px;border:1px solid currentColor;letter-spacing:.06em;text-transform:uppercase;flex:none}
 .wf-bar .name .kind.http{color:var(--info)}
 .wf-bar .name .kind.db{color:var(--good)}
@@ -288,11 +295,25 @@ a{color:inherit;text-decoration:none}
 .wf-bar .fill.http{background:var(--info)}
 .wf-bar .fill.db{background:var(--good)}
 .wf-bar .fill.llm{background:var(--signal-2)}
-.wf-bar .fill.error{background:var(--bad)}
+.wf-bar .fill.error{background:var(--bad);width:3px!important;min-width:3px}
 .wf-bar .dur{text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.wf-row-detail{padding:12px 14px;background:var(--bg-2);border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink);max-height:520px;overflow:auto}
+.wf-row-detail .kvline{display:flex;gap:10px;margin-bottom:6px;white-space:nowrap}
+.wf-row-detail .kvline .k{color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-size:10px;min-width:80px;flex:none}
+.wf-row-detail .kvline .v{color:var(--ink);flex:1;white-space:pre-wrap;word-break:break-word}
+.wf-row-detail pre{margin:0;background:var(--bg);padding:8px;border:1px solid var(--rule);white-space:pre-wrap;word-break:break-word}
+.sql-block{margin:10px 0;border:1px solid var(--rule);background:var(--bg)}
+.sql-block:first-child{margin-top:4px}
+.sql-block .sql-head{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:var(--bg-2);border-bottom:1px solid var(--rule)}
+.sql-block .sql-label{color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:600}
+.sql-block .sql-pre{margin:0;padding:10px 12px;background:var(--bg);border:0;font-family:var(--mono);font-size:12px;line-height:1.5;color:var(--ink);white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto}
+.tbl tbody td.dep-chev{padding:8px 0 8px 12px;color:var(--dim);width:24px}
+.tbl tbody td.dep-chev .chev{display:inline-block;width:12px;font-size:10px;color:var(--muted);transition:transform .1s}
+.tbl tbody tr.is-open td.dep-chev .chev{color:var(--signal)}
+.tbl-dep tbody tr.dep-detail-row:hover{background:var(--bg-2)}
 
 /* time axis ticks */
-.wf-axis{display:grid;grid-template-columns:200px 1fr 60px;gap:10px;font-size:9.5px;color:var(--dim);padding:0 0 4px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+.wf-axis{display:grid;grid-template-columns:56px minmax(180px,280px) minmax(120px,1fr) 64px;gap:10px;font-size:9.5px;color:var(--dim);padding:0 0 4px;border-bottom:1px solid var(--rule);margin-bottom:4px;font-variant-numeric:tabular-nums}
 .wf-axis .ticks{position:relative;height:14px}
 .wf-axis .ticks span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
 
@@ -308,6 +329,37 @@ a{color:inherit;text-decoration:none}
 .log-row .svc{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .log-row .msg{color:var(--ink);overflow:hidden;word-break:break-word}
 .log-row .msg .lname{color:var(--dim);font-size:10.5px;margin-top:2px}
+
+/* ─────────────────────────  STACK FRAMES  ───────────────────────── */
+.stack-frames{display:flex;flex-direction:column;border:1px solid var(--rule);background:var(--panel)}
+.stack-frame{display:grid;grid-template-columns:24px 1fr auto;gap:10px;padding:8px 12px;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:11.5px;align-items:start}
+.stack-frame:last-child{border-bottom:0}
+.stack-frame.vendor{color:var(--dim);background:transparent}
+.stack-frame.user{background:var(--bg-2)}
+.stack-frame .num{color:var(--dim);font-variant-numeric:tabular-nums;text-align:right;font-size:10.5px;padding-top:1px}
+.stack-frame .body{min-width:0}
+.stack-frame .fn{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stack-frame.vendor .fn{color:var(--muted);font-weight:400}
+.stack-frame .loc{color:var(--dim);font-size:10.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stack-frame .badge{font-size:9px;color:var(--muted);border:1px solid currentColor;padding:1px 5px;letter-spacing:.06em;text-transform:uppercase;align-self:start;font-family:var(--mono);white-space:nowrap}
+.stack-frame.user .badge{color:var(--signal)}
+.err-detail{display:flex;flex-direction:column;gap:14px}
+.err-message{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--bg-2);border:1px solid var(--rule);padding:10px 12px;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto}
+.err-message.error{border-left:3px solid var(--bad)}
+.err-timeline{display:flex;flex-direction:column;gap:1px}
+.err-timeline-row{display:grid;grid-template-columns:90px 60px 1fr auto;gap:10px;padding:6px 10px;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:11px;align-items:center;cursor:pointer;transition:background .08s}
+.err-timeline-row:hover{background:var(--bg-2)}
+.err-timeline-row.is-error{background:var(--bad-soft);border-left:3px solid var(--bad);padding-left:7px}
+.err-timeline-row .ts{color:var(--dim);font-variant-numeric:tabular-nums;text-align:right}
+.err-timeline-row .kind{font-size:9px;padding:1px 5px;border:1px solid currentColor;letter-spacing:.06em;text-transform:uppercase}
+.err-timeline-row .kind.db{color:var(--good)}
+.err-timeline-row .kind.http{color:var(--info)}
+.err-timeline-row .kind.span{color:var(--muted)}
+.err-timeline-row .kind.fn{color:var(--muted)}
+.err-timeline-row .kind.log{color:var(--info)}
+.err-timeline-row .kind.error{color:var(--bad)}
+.err-timeline-row .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.err-timeline-row .dur{color:var(--dim);font-variant-numeric:tabular-nums;font-size:10.5px}
 
 /* ─────────────────────────  EMPTY / LOADING  ───────────────────────── */
 .empty{padding:40px 24px;text-align:center;color:var(--muted);border:1px dashed var(--rule-2);background:var(--bg-2)}
@@ -1406,7 +1458,17 @@ function renderTraces(){
       '</div>' +
       '<div class="dur">' + fmtMs(Number(t.duration_ms || 0)) + '</div>' +
     '</div>';
-  }).join("") : '<div class="empty" style="margin:14px"><div class="ico">∅</div><p>' + (S.selectedRouteId ? (S.tracesCallSearch ? "No calls match." : "No traces for this route yet.") : "Pick a route on the left to see its calls.") + '</p></div>';
+  }).join("") : '<div class="empty" style="margin:14px"><div class="ico">∅</div>' + (function(){
+    if (!S.selectedRouteId) return '<p>Pick a route on the left to see its calls.</p>';
+    if (S.tracesCallSearch) return '<p>No calls match.</p>';
+    var route = S.routeState && S.routeState.route;
+    var hits = route && Number(route.call_count || 0);
+    if (hits > 0){
+      return '<p>This route has <b>' + num(hits) + '</b> aggregated call' + (hits === 1 ? '' : 's') + ' but no individual traces retained.</p>' +
+        '<p class="hint">Per-trace detail is pruned after the trace retention window — only the aggregated counts/p95 survive. New calls will appear here.</p>';
+    }
+    return '<p>No traces captured for this route yet.</p>';
+  })() + '</div>';
 
   var routesCollapsed = !!S.tracesRoutesCollapsed;
   var callsCollapsed = !!S.tracesCallsCollapsed;
@@ -1545,25 +1607,43 @@ function renderWaterfall(){
   if (!Number.isFinite(t1) || t1 <= t0) t1 = t0 + 1;
   var totalMs = t1 - t0;
 
-  var ticks = [0, 0.25, 0.5, 0.75, 1].map(function(f){ return '<span style="left:' + (f*100) + '%">' + Math.round(f * totalMs) + 'ms</span>'; }).join("");
+  var ticks = [0, 0.25, 0.5, 0.75, 1].map(function(f){ return '<span style="left:' + (f*100) + '%">' + fmtMs(f * totalMs) + '</span>'; }).join("");
 
-  var bars = spans.map(function(sp){
+  S.wfExpanded = S.wfExpanded || {};
+  var bars = spans.map(function(sp, idx){
     var leftPct = ((sp.t0 - t0) / totalMs) * 100;
-    var widthPct = Math.max(0.5, ((sp.t1 - sp.t0) / totalMs) * 100);
-    return '<div class="wf-bar">' +
-      '<div class="name"><span class="kind ' + sp.cssKind + '">' + esc(sp.kind) + '</span><span class="truncate">' + esc(sp.name) + '</span></div>' +
+    var widthPct = Math.max(0.4, ((sp.t1 - sp.t0) / totalMs) * 100);
+    var rowKey = sp.kind + ":" + idx + ":" + sp.name.slice(0, 40);
+    var open = !!S.wfExpanded[rowKey];
+    var indent = sp.depth ? new Array(sp.depth + 1).join("· ") : "";
+    var fullText = sp.tooltip || (sp.label + (sp.sublabel ? " — " + sp.sublabel : ""));
+    var html = '<div class="wf-bar ' + (open ? "is-open" : "") + '" data-wfrow="' + esc(rowKey) + '" tabindex="0" title="' + esc(fullText) + '">' +
+      '<div class="offset">' + (sp.t0 > 0.5 ? "+" + fmtMs(sp.t0) : "0") + '</div>' +
+      '<div class="name"><span class="kind ' + sp.cssKind + '">' + esc(sp.kind) + '</span>' +
+        (indent ? '<span class="indent">' + esc(indent) + '</span>' : '') +
+        '<span class="label-col"><span class="label">' + esc(sp.label || sp.name) + '</span>' +
+        (sp.sublabel ? '<span class="sublabel">' + esc(sp.sublabel) + '</span>' : '') +
+        '</span></div>' +
       '<div class="track"><div class="fill ' + sp.cssKind + '" style="left:' + leftPct + '%;width:' + widthPct + '%"></div></div>' +
       '<div class="dur">' + fmtMs(sp.t1 - sp.t0) + '</div>' +
     '</div>';
+    if (open) html += '<div class="wf-row-detail">' + renderSpanDetail(sp) + '</div>';
+    return html;
   }).join("");
 
   var tabHTML = ["all","spans","deps","logs","raw"].map(function(t){
-    return '<button class="wf-tab ' + (S.waterfallTab === t ? "active" : "") + '" data-wftab="' + t + '">' + t + '</button>';
+    return '<button class="wf-tab ' + (S.waterfallTab === t ? "active" : "") + '" role="tab" aria-selected="' + (S.waterfallTab === t ? "true" : "false") + '" data-wftab="' + t + '">' + t + '</button>';
   }).join("");
 
   var bodyHTML = "";
   if (S.waterfallTab === "all" || S.waterfallTab === "spans"){
-    bodyHTML += '<div class="wf-axis"><span></span><div class="ticks">' + ticks + '</div><span></span></div><div class="wf-bars">' + (bars || '<div class="empty"><p>No spans in this trace.</p></div>') + '</div>';
+    var axisHTML = '<div class="wf-axis" aria-hidden="true">' +
+      '<span>+offset</span>' +
+      '<span>span · operation</span>' +
+      '<div class="ticks">' + ticks + '</div>' +
+      '<span style="text-align:right">duration</span>' +
+    '</div>';
+    bodyHTML += axisHTML + '<div class="wf-bars">' + (bars || '<div class="empty"><p>No spans in this trace.</p></div>') + '</div>';
   }
   if (S.waterfallTab === "all" || S.waterfallTab === "deps"){
     bodyHTML += '<div style="margin-top:14px">' + renderDepDetails(d.dependencies || []) + '</div>';
@@ -1605,6 +1685,74 @@ function renderWaterfall(){
   $("copyTraceBtn").onclick = function(){ prepareAndCopy("trace", S.selectedTraceId, "/api/traces/" + encodeURIComponent(S.selectedTraceId) + "/agent-context", "TRACE"); };
   $("raw").onclick = function(){ S.waterfallTab = "raw"; renderWaterfall(); };
   document.querySelectorAll("[data-wftab]").forEach(function(b){ b.onclick = function(){ S.waterfallTab = b.dataset.wftab; renderWaterfall(); }; });
+  document.querySelectorAll("#waterfallCol [data-wfrow]").forEach(function(b){
+    function toggle(){
+      var key = b.dataset.wfrow;
+      S.wfExpanded[key] = !S.wfExpanded[key];
+      renderWaterfall();
+    }
+    b.onclick = toggle;
+    b.onkeydown = function(ev){ if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); toggle(); } };
+  });
+  document.querySelectorAll("#waterfallCol [data-deprow]").forEach(function(b){
+    b.onclick = function(ev){
+      if (ev.target.closest("[data-copy-pre]")) return;
+      var key = b.dataset.deprow;
+      S.depExpanded = S.depExpanded || {};
+      S.depExpanded[key] = !S.depExpanded[key];
+      renderWaterfall();
+    };
+  });
+  document.querySelectorAll("#waterfallCol [data-copy-pre]").forEach(function(b){
+    b.onclick = function(ev){
+      ev.stopPropagation();
+      var pre = b.closest(".sql-block").querySelector(".sql-pre");
+      if (!pre) return;
+      try {
+        navigator.clipboard.writeText(pre.textContent || "");
+        var prev = b.textContent;
+        b.textContent = "COPIED";
+        setTimeout(function(){ b.textContent = prev; }, 900);
+      } catch(e){ /* clipboard blocked */ }
+    };
+  });
+
+  var allLogs = (d.flow_logs || d.logs || []).concat(d.nearby_background_logs || []);
+  document.querySelectorAll("#waterfallCol [data-log]").forEach(function(el){
+    el.onclick = function(){
+      var meta = JSON.parse(el.dataset.log);
+      if (meta.trace_id && meta.trace_id !== S.selectedTraceId){
+        withLoading(function(){ return openTraceQuick(meta.trace_id); });
+        return;
+      }
+      var full = allLogs.find(function(r){ return r.id === meta.id; }) || {};
+      var tsEl = el.querySelector(".ts");
+      openDrawer({title: "Log record", sub: tsEl ? tsEl.textContent : "", bodyHTML: '<pre>' + esc(pretty(full)) + '</pre>'});
+    };
+  });
+}
+function parsePayload(raw){
+  try { return JSON.parse(raw || "{}"); } catch(e){ return {}; }
+}
+function depBarLabels(dep){
+  var p = parsePayload(dep.payload_json);
+  if (dep.kind === "db_query"){
+    var verb = String(p.operation || p.statement_template || "").trim().split(/\s+/)[0].toUpperCase();
+    var table = p.target || (Array.isArray(p.tables) && p.tables[0]) || p.database || "";
+    var label = (verb && table) ? (verb + " " + table) : (verb || table || "db_query");
+    var sub = String(p.rendered_statement || p.statement_template || p.operation || "").replace(/\s+/g, " ").trim();
+    return {label: label, sublabel: sub, payload: p};
+  }
+  if (dep.kind === "http_client_call"){
+    var method = p.method || "GET";
+    var host = p.host || (p.url && p.url.split("/")[2]) || "";
+    var path = p.path || (p.url && p.url.replace(/^https?:\/\/[^/]+/, "")) || "";
+    return {label: method + " " + (host || path), sublabel: path && host ? path : "", payload: p};
+  }
+  if ((dep.kind || "").indexOf("llm") >= 0){
+    return {label: (p.provider || "llm") + " · " + (p.model || ""), sublabel: p.operation || "", payload: p};
+  }
+  return {label: p.target || p.host || dep.kind || "dependency", sublabel: p.operation || "", payload: p};
 }
 function collectSpans(d){
   // Build a sorted list of span-like items with t0/t1 in ms relative to trace start.
@@ -1617,42 +1765,148 @@ function collectSpans(d){
     var t = new Date(start).getTime();
     if (Number.isFinite(t) && (t0base == null || t < t0base)) t0base = t;
   });
+  // include trace start so root bar aligns
+  (d.traces || []).forEach(function(t){
+    var ts = t.started_at && new Date(t.started_at).getTime();
+    if (Number.isFinite(ts) && (t0base == null || ts < t0base)) t0base = ts;
+  });
   if (t0base == null) t0base = Date.now();
-  function add(kind, cssKind, name, item){
+  function add(kind, cssKind, label, sublabel, item, raw, depth){
     var start = new Date(item.started_at || item.timestamp || t0base).getTime();
     var dur = Number(item.duration_ms != null ? item.duration_ms : (item.payload && item.payload.duration_ms) || 0);
     var t0 = isFinite(start) ? start - t0base : 0;
-    spans.push({kind: kind, cssKind: cssKind, name: name, t0: t0, t1: t0 + dur});
+    spans.push({kind: kind, cssKind: cssKind, label: label, sublabel: sublabel || "", name: label, t0: t0, t1: t0 + dur, raw: raw, depth: depth || 0, tooltip: label + (sublabel ? " — " + sublabel : "")});
   }
-  // root trace as the first bar
+  // root trace
   (d.traces || []).forEach(function(t){
-    add("ROUTE", "http", (t.method || "") + " " + (t.route_pattern || ""), {started_at: t.started_at, duration_ms: t.duration_ms});
+    add("ROUTE", "http", (t.method || "") + " " + (t.route_pattern || ""), t.service_name || "", {started_at: t.started_at, duration_ms: t.duration_ms}, t, 0);
   });
+  // function spans (indented under root)
   (d.spans || []).filter(function(s){ return s.kind === "function"; }).forEach(function(s){
-    add("fn", "span", s.name || "fn", s);
+    var p = parsePayload(s.payload_json);
+    add("FN", "span", s.name || p.name || "fn", p.module || "", s, s, 1);
   });
+  // dependencies (indented as children)
   (d.dependencies || []).forEach(function(dep){
-    var p = (function(){ try { return JSON.parse(dep.payload_json || "{}"); } catch(e){ return {}; } })();
-    var name = p.target || p.host || p.database || p.model || p.operation || dep.kind || "dependency";
-    var k = dep.kind === "db_query" ? "db" : dep.kind === "http_client_call" ? "http" : (dep.kind || "").includes("llm") ? "llm" : "span";
-    add(k.toUpperCase(), k, name, {started_at: dep.timestamp, duration_ms: p.duration_ms || 0});
+    var info = depBarLabels(dep);
+    var k = dep.kind === "db_query" ? "db" : dep.kind === "http_client_call" ? "http" : (dep.kind || "").indexOf("llm") >= 0 ? "llm" : "span";
+    add(k.toUpperCase(), k, info.label, info.sublabel, {started_at: dep.timestamp, duration_ms: info.payload.duration_ms || 0}, Object.assign({}, dep, {_payload: info.payload}), 1);
   });
+  // exceptions: 0-duration markers, drawn as thin red lines via CSS
   (d.exceptions || []).forEach(function(e){
-    add("ERR", "error", e.type + ": " + (e.normalized_message || "").slice(0, 60), {started_at: e.last_seen, duration_ms: 4});
+    add("ERR", "error", (e.type || "Error") + ": " + (e.normalized_message || "").slice(0, 80), e.fingerprint || "", {started_at: e.last_seen, duration_ms: 0}, e, 1);
   });
-  spans.sort(function(a,b){ return a.t0 - b.t0; });
-  return spans.length ? spans : [{kind:"NONE", cssKind:"span", name:"(no spans)", t0:0, t1:1}];
+  spans.sort(function(a,b){
+    if (a.t0 !== b.t0) return a.t0 - b.t0;
+    return (b.t1 - b.t0) - (a.t1 - a.t0);
+  });
+  return spans;
+}
+function renderSpanDetail(sp){
+  var raw = sp.raw || {};
+  var p = raw._payload || parsePayload(raw.payload_json) || {};
+  var lines = [];
+  function row(k, v){ if (v == null || v === "") return; lines.push('<div class="kvline"><span class="k">' + esc(k) + '</span><span class="v">' + esc(String(v)) + '</span></div>'); }
+  row("kind", sp.kind);
+  var startedRaw = sp.raw && (sp.raw.started_at || sp.raw.timestamp);
+  row("started", startedRaw ? fmtTs(startedRaw) : "—");
+  row("offset", "+" + fmtMs(sp.t0));
+  row("duration", fmtMs(sp.t1 - sp.t0));
+  if (sp.cssKind === "db"){
+    row("target", p.target);
+    row("operation", p.operation);
+    if (p.rendered_statement) lines.push('<div class="kvline"><span class="k">sql</span><span class="v"><pre>' + esc(p.rendered_statement) + '</pre></span></div>');
+    else if (p.statement_template) lines.push('<div class="kvline"><span class="k">sql</span><span class="v"><pre>' + esc(p.statement_template) + '</pre></span></div>');
+    if (Array.isArray(p.parameters) && p.parameters.length) row("params", JSON.stringify(p.parameters).slice(0, 400));
+    row("rows", p.row_count);
+  } else if (sp.cssKind === "http"){
+    row("method", p.method);
+    row("url", p.url || ((p.host || "") + (p.path || "")));
+    row("status", p.status_code);
+    row("request", p.request_body && JSON.stringify(p.request_body).slice(0, 400));
+    row("response", p.response_body && JSON.stringify(p.response_body).slice(0, 400));
+  } else if (sp.cssKind === "llm"){
+    row("provider", p.provider);
+    row("model", p.model);
+    row("input tokens", p.input_tokens);
+    row("output tokens", p.output_tokens);
+  } else if (sp.cssKind === "error"){
+    row("type", raw.type);
+    row("message", raw.normalized_message);
+    if (raw.sample_trace_id) row("sample trace", raw.sample_trace_id);
+  } else {
+    row("name", sp.label);
+    row("module", p.module);
+  }
+  if (raw.error_message || p.error_message) row("error", raw.error_message || p.error_message);
+  lines.push('<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.06em">▸ raw payload</summary><pre style="margin-top:6px">' + esc(pretty(p && Object.keys(p).length ? p : raw)) + '</pre></details>');
+  return lines.join("");
+}
+function sqlVerb(p){
+  var op = String(p.operation || p.statement_template || p.rendered_statement || "").trim();
+  var first = op.split(/\s+/)[0].toUpperCase();
+  if (["SELECT","INSERT","UPDATE","DELETE","BEGIN","COMMIT","ROLLBACK","SAVEPOINT","RELEASE"].indexOf(first) >= 0) return first;
+  return "QUERY";
+}
+function formatSql(sql){
+  if (!sql) return "";
+  // Light-touch pretty printer: break on major keywords without over-engineering.
+  var keywords = ["SELECT","FROM","WHERE","LEFT JOIN","RIGHT JOIN","INNER JOIN","JOIN","GROUP BY","ORDER BY","HAVING","LIMIT","OFFSET","UNION ALL","UNION","ON CONFLICT","RETURNING","VALUES","SET","INSERT INTO","UPDATE","DELETE FROM"];
+  var out = String(sql).replace(/\s+/g, " ").trim();
+  keywords.forEach(function(kw){
+    var re = new RegExp("\\s+" + kw.replace(/ /g, "\\s+") + "\\b", "gi");
+    out = out.replace(re, "\n" + kw + " ");
+  });
+  // indent continuation of long select lists / AND / OR
+  out = out.replace(/,\s*(?=[^\n])/g, ",\n  ");
+  out = out.replace(/\s+(AND|OR)\s+/gi, "\n  $1 ");
+  return out;
 }
 function renderDepDetails(deps){
   if (!deps || !deps.length) return '<div class="empty"><p>No dependency calls in this trace.</p></div>';
-  var rows = deps.map(function(d){
-    var p = (function(){ try { return JSON.parse(d.payload_json || "{}"); } catch(e){ return {}; } })();
-    var target = p.target || p.host || p.database || p.model || (Array.isArray(p.tables) ? p.tables.join(", ") : "");
-    var op = p.rendered_statement || p.statement_template || p.operation || p.method || "";
+  S.depExpanded = S.depExpanded || {};
+  var rows = deps.map(function(d, idx){
+    var info = depBarLabels(d);
+    var p = info.payload;
     var kind = d.kind === "db_query" ? "db" : d.kind === "http_client_call" ? "http" : "span";
-    return '<tr><td><span class="chip ' + (kind==="db" ? "good" : kind==="http" ? "info" : "dim") + '">' + esc(d.kind || "dep") + '</span></td><td class="truncate">' + esc(target) + '</td><td class="truncate dim">' + esc(String(op).slice(0, 240)) + '</td><td class="num">' + (p.duration_ms ? Math.round(p.duration_ms) + "ms" : "—") + '</td></tr>';
+    var rowKey = (d.id || "") + ":" + idx;
+    var open = !!S.depExpanded[rowKey];
+    var html = '<tr class="row-clickable ' + (open ? "is-open" : "") + '" data-deprow="' + esc(rowKey) + '" title="' + esc(info.label) + '">' +
+      '<td class="dep-chev"><span class="chev">' + (open ? "▾" : "▸") + '</span></td>' +
+      '<td><span class="chip ' + (kind==="db" ? "good" : kind==="http" ? "info" : "dim") + '">' + esc(d.kind || "dep") + '</span></td>' +
+      '<td class="truncate"><span class="mono">' + esc(info.label) + '</span></td>' +
+      '<td class="num">' + (p.duration_ms ? fmtMs(p.duration_ms) : "—") + '</td>' +
+    '</tr>';
+    if (open){
+      html += '<tr class="dep-detail-row"><td colspan="4" style="padding:0;background:var(--bg-2);max-width:none"><div class="wf-row-detail">' + renderDepRowDetail(d, p) + '</div></td></tr>';
+    }
+    return html;
   }).join("");
-  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Dependency details</span></div><div class="panel-body no-pad"><table class="tbl"><thead><tr><th>kind</th><th>target</th><th>operation</th><th class="num">ms</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Dependency details</span><span class="panel-meta">click a row to see the full SQL</span></div><div class="panel-body no-pad"><table class="tbl tbl-dep"><thead><tr><th style="width:24px"></th><th>kind</th><th>target</th><th class="num">ms</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+function renderDepRowDetail(dep, p){
+  var lines = [];
+  function row(k, v){ if (v == null || v === "") return; lines.push('<div class="kvline"><span class="k">' + esc(k) + '</span><span class="v">' + esc(String(v)) + '</span></div>'); }
+  row("kind", dep.kind);
+  row("target", p.target || p.host || p.database || p.model || "");
+  row("operation", p.operation || p.method || "");
+  row("duration", p.duration_ms != null ? fmtMs(p.duration_ms) : "");
+  row("status", p.status_code);
+  row("rows", p.row_count);
+  // Pretty-printed SQL gets its own block (full-width, scrollable, copy-friendly).
+  var sql = p.rendered_statement || p.statement_template || "";
+  if (sql){
+    var sqlLabel = p.rendered_statement ? "sql" : "sql template";
+    var sqlPretty = formatSql(sql);
+    lines.push('<div class="sql-block"><div class="sql-head"><span class="sql-label">' + sqlLabel + '</span><button class="btn btn-sm" data-copy-pre>COPY</button></div><pre class="sql-pre">' + esc(sqlPretty) + '</pre></div>');
+  }
+  if (Array.isArray(p.parameters) && p.parameters.length){
+    lines.push('<div class="sql-block"><div class="sql-head"><span class="sql-label">parameters</span><button class="btn btn-sm" data-copy-pre>COPY</button></div><pre class="sql-pre">' + esc(JSON.stringify(p.parameters, null, 2)) + '</pre></div>');
+  }
+  if (p.url) row("url", p.url);
+  if (p.error_message) row("error", p.error_message);
+  lines.push('<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.06em">▸ raw payload</summary><pre style="margin-top:6px">' + esc(pretty(p)) + '</pre></details>');
+  return lines.join("");
 }
 function renderLogStream(logs){
   if (!logs || !logs.length) return '<div class="empty"><p>No logs.</p></div>';
@@ -1782,6 +2036,108 @@ function renderLogs(){
 }
 
 /* ───────────────────────────  RENDER · ERRORS  ─────────────────────────── */
+function parseStackFrames(payload){
+  if (!payload) return [];
+  var stack = payload.stack || payload.frames || payload.traceback || [];
+  if (typeof stack === "string"){
+    return stack.split("\n").filter(Boolean).map(function(line){ return {raw: line}; });
+  }
+  if (!Array.isArray(stack)) return [];
+  return stack.map(function(f){ return f || {}; });
+}
+function isUserFrame(frame){
+  var file = String(frame.file || frame.filename || frame.path || "");
+  if (!file) return false;
+  if (/site-packages|dist-packages|\/runtime_observer\/|\/python3\.\d+\//.test(file)) return false;
+  if (/\/starlette\/|\/fastapi\/|\/uvicorn\/|\/asyncio\/|\/sqlalchemy\//.test(file)) return false;
+  return true;
+}
+function shortFile(file){
+  if (!file) return "";
+  if (file.length < 60) return file;
+  var idx = file.indexOf("site-packages/");
+  if (idx >= 0) return ".../" + file.slice(idx + "site-packages/".length);
+  var parts = file.split("/");
+  if (parts.length > 4) return ".../" + parts.slice(-3).join("/");
+  return file;
+}
+function renderStackFrames(payload){
+  var frames = parseStackFrames(payload);
+  if (!frames.length) return '<div class="empty"><p>No stack frames captured.</p></div>';
+  // Most languages emit frames innermost-last; show innermost (the throw site) at top.
+  var ordered = frames.slice().reverse();
+  return '<div class="stack-frames">' + ordered.map(function(f, idx){
+    if (f.raw) return '<div class="stack-frame vendor"><span class="num">' + (idx + 1) + '</span><div class="body"><div class="fn">' + esc(f.raw) + '</div></div><span class="badge">raw</span></div>';
+    var file = f.file || f.filename || f.path || "";
+    var fn = f.function || f.func || f.name || "<anonymous>";
+    var line = f.line != null ? f.line : (f.lineno != null ? f.lineno : "");
+    var user = isUserFrame(f);
+    var badge = user ? "app" : "vendor";
+    return '<div class="stack-frame ' + (user ? "user" : "vendor") + '" title="' + esc(file) + (line ? ":" + line : "") + '">' +
+      '<span class="num">' + (idx + 1) + '</span>' +
+      '<div class="body">' +
+        '<div class="fn">' + esc(fn) + '</div>' +
+        '<div class="loc">' + esc(shortFile(file)) + (line ? ":" + esc(line) : "") + (f.module ? " · " + esc(f.module) : "") + '</div>' +
+      '</div>' +
+      '<span class="badge">' + badge + '</span>' +
+    '</div>';
+  }).join("") + '</div>';
+}
+function renderErrorTimelineContext(detail){
+  // Build a unified before/at/after timeline from the sample trace + correlated logs.
+  if (!detail || (!detail.trace && !detail.correlated_logs)) return '';
+  var trace = detail.trace || {};
+  var spans = (trace.spans || []).filter(function(s){ return s.kind === "function"; });
+  var depKinds = {db_query: 1, http_client_call: 1, llm_call: 1};
+  var deps = (trace.dependencies || (trace.events || []).filter(function(e){ return depKinds[e.kind]; }));
+  var logs = detail.correlated_logs || (trace.logs || []);
+  var exc = detail.exception || {};
+  var ts = function(s){ return s ? new Date(s).getTime() : 0; };
+  var errAt = ts(exc.last_seen || exc.first_seen);
+  var items = [];
+  spans.forEach(function(s){
+    var p = parsePayload(s.payload_json);
+    items.push({t: ts(s.started_at), kind: "FN", cssKind: "fn", desc: s.name || p.name || "fn", sub: p.module || "", dur: s.duration_ms, raw: s});
+  });
+  deps.forEach(function(dep){
+    var info = depBarLabels(dep);
+    var k = dep.kind === "db_query" ? "db" : dep.kind === "http_client_call" ? "http" : "span";
+    items.push({t: ts(dep.timestamp), kind: k.toUpperCase(), cssKind: k, desc: info.label, sub: info.sublabel, dur: info.payload.duration_ms, raw: dep});
+  });
+  logs.forEach(function(l){
+    var lvl = String(l.level || "INFO").toUpperCase();
+    var cssK = lvl === "ERROR" || lvl === "CRITICAL" ? "error" : "log";
+    items.push({t: ts(l.timestamp), kind: lvl, cssKind: cssK, desc: l.message || "", sub: l.logger_name || l.service_name || "", dur: null, raw: l});
+  });
+  if (errAt){
+    items.push({t: errAt, kind: "ERROR", cssKind: "error", desc: (exc.type || "Error") + ": " + (exc.normalized_message || ""), sub: "", dur: null, isError: true, raw: exc});
+  }
+  if (!items.length) return '<div class="empty"><p>No surrounding spans, calls, or logs for this trace.</p></div>';
+  items.sort(function(a,b){ return a.t - b.t; });
+  var base = items[0].t;
+  return '<div class="err-timeline">' + items.map(function(it){
+    var rel = (it.t - base);
+    var ts = (rel >= 0 ? "+" : "") + fmtMs(rel);
+    var dur = it.dur != null ? fmtMs(it.dur) : "";
+    return '<div class="err-timeline-row ' + (it.isError ? "is-error" : "") + '" title="' + esc(it.desc) + '">' +
+      '<span class="ts">' + esc(ts) + '</span>' +
+      '<span class="kind ' + it.cssKind + '">' + esc(it.kind) + '</span>' +
+      '<span class="desc">' + esc(it.desc) + (it.sub ? ' <span class="dim">· ' + esc(it.sub) + '</span>' : '') + '</span>' +
+      '<span class="dur">' + esc(dur) + '</span>' +
+    '</div>';
+  }).join("") + '</div>';
+}
+async function loadErrorDetail(cluster){
+  if (!cluster || !cluster.app_id || !cluster.id) return null;
+  S.errorDetailCache = S.errorDetailCache || {};
+  var key = cluster.app_id + ":" + cluster.id;
+  if (S.errorDetailCache[key]) return S.errorDetailCache[key];
+  try {
+    var detail = await api("/api/apps/" + encodeURIComponent(cluster.app_id) + "/exceptions/" + encodeURIComponent(cluster.id));
+    S.errorDetailCache[key] = detail;
+    return detail;
+  } catch(e){ return null; }
+}
 function renderErrors(){
   var clusters = inScope(S.errorClusters || []);
   var selected = clusters.find(function(c){ return c.id === S.selectedClusterId; }) || clusters[0];
@@ -1797,26 +2153,8 @@ function renderErrors(){
     '</div>';
   }).join("") : '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>No errors captured.</p></div>';
 
-  var detailHTML = "";
-  if (selected){
-    detailHTML =
-      '<div class="waterfall">' +
-        '<div class="wf-head">' +
-          '<div class="wf-title"><span class="chip bad">' + esc(selected.type) + '</span><span>' + esc(String(selected.normalized_message || "").slice(0, 120)) + '</span></div>' +
-          '<div class="wf-meta">' +
-            '<span class="kv"><span class="k">service</span><span class="v">' + esc(selected.service_name || "—") + '</span></span>' +
-            '<span class="kv"><span class="k">route</span><span class="v">' + esc((selected.method || "") + " " + (selected.route_pattern || "—")) + '</span></span>' +
-            '<span class="kv"><span class="k">count</span><span class="v">' + num(selected.count) + '</span></span>' +
-            '<span class="kv"><span class="k">first seen</span><span class="v">' + esc(fmtTs(selected.first_seen)) + '</span></span>' +
-            '<span class="kv"><span class="k">last seen</span><span class="v">' + esc(fmtTs(selected.last_seen)) + '</span></span>' +
-          '</div>' +
-          '<div class="wf-actions">' +
-            (selected.sample_trace_id ? '<button class="btn btn-primary" data-open-trace="' + esc(selected.sample_trace_id) + '">VIEW SAMPLE TRACE →</button>' : '<button class="btn" disabled>NO SAMPLE TRACE</button>') +
-          '</div>' +
-        '</div>' +
-        (selected.sample_payload_json ? '<pre>' + esc(pretty(selected.sample_payload_json)) + '</pre>' : '') +
-      '</div>';
-  }
+  var detailHTML = '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>Pick a cluster to inspect.</p></div>';
+  if (selected) detailHTML = '<div id="errDetailPane" class="waterfall">' + renderErrorDetailHeader(selected) + '<div class="dim" style="padding:14px">Loading error context…</div></div>';
 
   $("main").innerHTML =
     '<div class="page">' +
@@ -1827,13 +2165,53 @@ function renderErrors(){
         '<div class="panel" style="margin-bottom:14px"><div class="panel-head"><span class="panel-title">▰ Error timeline · 24h</span></div><div class="panel-body" id="errTimelineBody"></div></div>' +
         '<div class="split t-list" style="height:calc(100vh - 360px);border:1px solid var(--rule);border-top:1px solid var(--rule)">' +
           '<div class="col"><div class="error-cluster-list">' + clusterListHTML + '</div></div>' +
-          '<div class="col">' + (detailHTML || '<div class="empty" style="margin:14px"><div class="ico">✓</div><p>Pick a cluster to inspect.</p></div>') + '</div>' +
+          '<div class="col">' + detailHTML + '</div>' +
         '</div>' +
       '</div>' +
     '</div>';
   drawErrTimeline($("errTimelineBody"));
   document.querySelectorAll("[data-cluster]").forEach(function(el){ el.onclick = function(){ S.selectedClusterId = el.dataset.cluster; renderErrors(); }; });
   document.querySelectorAll("[data-open-trace]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return openTraceQuick(b.dataset.openTrace); }); }; });
+
+  if (selected){
+    var loadingFor = selected.id;
+    loadErrorDetail(selected).then(function(detail){
+      if (S.selectedClusterId !== loadingFor) return;
+      var pane = $("errDetailPane");
+      if (!pane) return;
+      pane.innerHTML = renderErrorDetailHeader(selected) + renderErrorDetailBody(selected, detail);
+      pane.querySelectorAll("[data-open-trace]").forEach(function(b){ b.onclick = function(){ withLoading(function(){ return openTraceQuick(b.dataset.openTrace); }); }; });
+    });
+  }
+}
+function renderErrorDetailHeader(selected){
+  return '<div class="wf-head">' +
+    '<div class="wf-title"><span class="chip bad">' + esc(selected.type) + '</span><span class="truncate" title="' + esc(selected.normalized_message || "") + '">' + esc(String(selected.normalized_message || "").slice(0, 200)) + '</span></div>' +
+    '<div class="wf-meta">' +
+      '<span class="kv"><span class="k">service</span><span class="v">' + esc(selected.service_name || "—") + '</span></span>' +
+      '<span class="kv"><span class="k">route</span><span class="v">' + esc((selected.method || "") + " " + (selected.route_pattern || "—")) + '</span></span>' +
+      '<span class="kv"><span class="k">count</span><span class="v">' + num(selected.count) + '</span></span>' +
+      '<span class="kv"><span class="k">first seen</span><span class="v">' + esc(fmtTs(selected.first_seen)) + '</span></span>' +
+      '<span class="kv"><span class="k">last seen</span><span class="v">' + esc(fmtTs(selected.last_seen)) + '</span></span>' +
+    '</div>' +
+    '<div class="wf-actions">' +
+      (selected.sample_trace_id ? '<button class="btn btn-primary" data-open-trace="' + esc(selected.sample_trace_id) + '">VIEW SAMPLE TRACE →</button>' : '<button class="btn" disabled>NO SAMPLE TRACE</button>') +
+    '</div>' +
+  '</div>';
+}
+function renderErrorDetailBody(selected, detail){
+  var payload = parsePayload(selected.sample_payload_json);
+  var msg = payload.message || selected.normalized_message || "";
+  var stackPanel = '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Stack trace</span><span class="panel-meta">innermost first</span></div><div class="panel-body no-pad">' + renderStackFrames(payload) + '</div></div>';
+  var msgPanel = msg ? '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Message</span></div><div class="panel-body"><div class="err-message error">' + esc(msg) + '</div></div></div>' : '';
+  var timelinePanel = '';
+  if (detail && (detail.trace || detail.correlated_logs)){
+    timelinePanel = '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Calls &amp; logs around the error</span><span class="panel-meta">from sample trace</span></div><div class="panel-body no-pad">' + renderErrorTimelineContext(detail) + '</div></div>';
+  } else if (detail === null){
+    timelinePanel = '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Calls &amp; logs around the error</span></div><div class="panel-body"><div class="dim">No correlated trace context available.</div></div></div>';
+  }
+  var rawPanel = '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Raw payload</span></div><div class="panel-body no-pad"><pre style="margin:0;padding:14px;max-height:340px;overflow:auto">' + esc(pretty(payload)) + '</pre></div></div>';
+  return '<div class="err-detail">' + msgPanel + stackPanel + timelinePanel + rawPanel + '</div>';
 }
 function drawErrTimeline(container){
   var s = S.errorTimeline || [];
@@ -1935,8 +2313,100 @@ function depLabel(d){
   if (d.dependency_type === "package") return "pkg " + d.target;
   return (d.dependency_type || "dep") + " " + (d.target || "");
 }
+function depStatusChipClass(bucket){
+  if (bucket === "2xx") return "good";
+  if (bucket === "3xx") return "info";
+  if (bucket === "4xx") return "warn";
+  if (bucket === "5xx") return "bad";
+  return "dim";
+}
+function depStatusCodeChipClass(code){
+  var n = Number(code);
+  if (!Number.isFinite(n) || n === 0) return "dim";
+  if (n < 300) return "good";
+  if (n < 400) return "info";
+  if (n < 500) return "warn";
+  return "bad";
+}
+function renderDepStats(d, stats){
+  var errRate = d.call_count > 0 ? (Number(d.error_count||0) / Number(d.call_count) * 100) : 0;
+  var tiles = [
+    {label:"calls", value:num(d.call_count)},
+    {label:"errors", value:num(d.error_count) + (errRate > 0 ? ' (' + errRate.toFixed(1) + '%)' : ''), cls: errRate > 1 ? "txt-bad" : ""},
+    {label:"calls/min", value: stats && stats.calls_per_min ? Number(stats.calls_per_min).toFixed(2) : "—"},
+    {label:"avg", value: stats ? fmtMs(stats.avg_ms) : "—"},
+    {label:"p50", value: stats ? fmtMs(stats.p50_ms) : "—"},
+    {label:"p95", value: stats ? fmtMs(stats.p95_ms) : fmtMs(d.p95_duration_ms)},
+    {label:"max", value: stats ? fmtMs(stats.max_ms) : "—"}
+  ];
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:14px">' +
+    tiles.map(function(t){
+      return '<div style="padding:8px 10px;border:1px solid var(--rule);background:var(--bg-2)">' +
+        '<div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">' + esc(t.label) + '</div>' +
+        '<div class="mono ' + (t.cls || "") + '" style="font-size:14px;margin-top:2px">' + t.value + '</div>' +
+      '</div>';
+    }).join("") +
+  '</div>';
+}
+function renderDepStatusDistribution(dist){
+  if (!dist || !dist.length) return "";
+  var total = dist.reduce(function(s, e){ return s + Number(e.count||0); }, 0);
+  if (!total) return "";
+  var bar = '<div style="display:flex;height:8px;border:1px solid var(--rule);background:var(--bg-2);overflow:hidden">' +
+    dist.map(function(e){
+      var pct = (Number(e.count) / total * 100).toFixed(2);
+      var cls = depStatusChipClass(e.bucket);
+      var color = cls === "good" ? "var(--good)" : cls === "info" ? "var(--info)" : cls === "warn" ? "var(--warn)" : cls === "bad" ? "var(--bad)" : "var(--dim)";
+      return '<span title="' + esc(e.bucket + ": " + e.count) + '" style="width:' + pct + '%;background:' + color + '"></span>';
+    }).join("") +
+  '</div>';
+  var legend = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' +
+    dist.map(function(e){
+      var pct = (Number(e.count) / total * 100).toFixed(1);
+      return '<span class="chip ' + depStatusChipClass(e.bucket) + '">' + esc(e.bucket) + ' · ' + num(e.count) + ' (' + pct + '%)</span>';
+    }).join("") +
+  '</div>';
+  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Status code distribution</span><span class="panel-meta">' + num(total) + ' recent</span></div><div class="panel-body">' + bar + legend + '</div></div>';
+}
+function renderDepTopPaths(paths){
+  if (!paths || !paths.length) return "";
+  var rows = paths.map(function(p){
+    var errPct = p.count > 0 ? (Number(p.error_count||0) / Number(p.count) * 100) : 0;
+    return '<tr>' +
+      '<td class="truncate"><span class="mono">' + esc(p.path || "/") + '</span></td>' +
+      '<td class="num">' + num(p.count) + '</td>' +
+      '<td class="num ' + (errPct > 1 ? "txt-bad" : "dim") + '">' + num(p.error_count || 0) + (errPct > 0 ? ' <span class="dim">(' + errPct.toFixed(1) + '%)</span>' : '') + '</td>' +
+      '<td class="num">' + fmtMs(p.avg_ms) + '</td>' +
+      '<td class="num">' + fmtMs(p.p95_ms) + '</td>' +
+    '</tr>';
+  }).join("");
+  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Top paths</span><span class="panel-meta">' + paths.length + ' path' + (paths.length === 1 ? '' : 's') + '</span></div><div class="panel-body no-pad"><table class="tbl"><thead><tr><th>path</th><th class="num">calls</th><th class="num">errors</th><th class="num">avg</th><th class="num">p95</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+function renderDepRecentCalls(samples, isHttp){
+  if (!samples || !samples.length) return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Recent calls</span><span class="panel-meta">0</span></div><div class="panel-body"><div class="empty" style="border:0"><p>No recent calls retained.</p></div></div></div>';
+  var rows = samples.map(function(s){
+    var p = s.payload || {};
+    var trace = s.trace_id ? ' <a data-open-trace="' + esc(s.trace_id) + '" style="color:var(--signal);text-decoration:underline;cursor:pointer">trace →</a>' : '';
+    if (isHttp){
+      var statusCell = p.status_code != null ? '<span class="chip ' + depStatusCodeChipClass(p.status_code) + '">' + esc(String(p.status_code)) + '</span>' : (p.error_type ? '<span class="chip bad">' + esc(p.error_type) + '</span>' : '<span class="chip dim">—</span>');
+      return '<tr><td class="dim">' + esc(fmtTs(s.timestamp)) + '</td>' +
+        '<td>' + statusCell + '</td>' +
+        '<td class="truncate"><span class="mono">' + esc((p.method || "") + " " + (p.path || "/")) + '</span>' + trace + '</td>' +
+        '<td class="num">' + fmtMs(p.duration_ms) + '</td></tr>';
+    }
+    var op = p.operation || p.statement_fingerprint || p.model || s.kind || "";
+    return '<tr><td class="dim">' + esc(fmtTs(s.timestamp)) + '</td>' +
+      '<td class="truncate"><span class="mono">' + esc(String(op).slice(0, 240)) + '</span>' + trace + '</td>' +
+      '<td class="num">' + fmtMs(p.duration_ms) + '</td></tr>';
+  }).join("");
+  var header = isHttp
+    ? '<thead><tr><th>time</th><th>status</th><th>method · path</th><th class="num">duration</th></tr></thead>'
+    : '<thead><tr><th>time</th><th>operation</th><th class="num">duration</th></tr></thead>';
+  return '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Recent calls</span><span class="panel-meta">' + samples.length + '</span></div><div class="panel-body no-pad"><table class="tbl">' + header + '<tbody>' + rows + '</tbody></table></div></div>';
+}
 async function openDepDetail(d){
   var ctx = await api("/api/dependencies/" + encodeURIComponent(d.id) + "/context");
+  var isHttp = d.dependency_type === "http";
   var errs = (ctx.error_samples || []).map(function(e){
     return '<div class="log-row"><span class="ts">' + esc(fmtTs(e.timestamp)) + '</span><span class="lvl ERROR">ERR</span><span class="svc">' + esc((e.payload && e.payload.error_type) || "error") + '</span><span class="msg">' + esc((e.payload && e.payload.error_message) || "") + (e.trace_id ? ' <a data-open-trace="' + esc(e.trace_id) + '" style="color:var(--signal);text-decoration:underline;margin-left:6px">view trace →</a>' : '') + '</span></div>';
   }).join("");
@@ -1948,6 +2418,10 @@ async function openDepDetail(d){
     sub: (d.service_name || "—") + " · " + num(d.call_count) + " calls · " + num(d.error_count) + " errors",
     bodyHTML:
       '<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn btn-primary" id="copyDepBtn">' + copyLabel("dep", d.id, "COPY FOR AI") + '</button></div>' +
+      renderDepStats(d, ctx.stats) +
+      (isHttp ? renderDepStatusDistribution(ctx.status_distribution) : "") +
+      (isHttp ? renderDepTopPaths(ctx.top_paths) : "") +
+      renderDepRecentCalls(ctx.samples, isHttp) +
       '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Error samples</span><span class="panel-meta">' + (ctx.error_samples || []).length + '</span></div><div class="panel-body no-pad">' + (errs || '<div class="empty" style="border:0"><p>No individual error payloads retained.</p></div>') + '</div></div>' +
       '<div class="panel"><div class="panel-head"><span class="panel-title">▸ Related logs</span><span class="panel-meta">' + (ctx.related_logs || []).length + '</span></div><div class="panel-body no-pad">' + (related || '<div class="empty" style="border:0"><p>No related logs.</p></div>') + '</div></div>'
   });

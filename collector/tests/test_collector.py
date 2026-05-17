@@ -237,6 +237,9 @@ def test_project_api_keys_scope_ingest_by_project(tmp_path):
     projects = client.get("/api/projects").json()
     assert any(project["project_name"] == "shop" for project in projects)
     assert not any(project["project_name"] == "other" for project in projects)
+    apps = client.get("/api/apps").json()
+    assert all(app["project_name"] == "shop" for app in apps)
+    assert any(app["service_name"] == wrong_project_event["service"]["name"] for app in apps)
     keys = client.get("/api/projects/shop/api-keys").json()
     assert keys[0]["prefix"] == created["prefix"]
     assert keys[0]["name"] == "shop"
@@ -420,6 +423,61 @@ def test_auth_ingest_dashboard_logs_and_clear(tmp_path):
     clear = client.post("/api/admin/clear")
     assert clear.status_code == 200
     assert client.get("/api/apps").json() == []
+
+
+def http_dep_events():
+    service = {"project_name": "internal-assistant", "name": "client", "display_name": "Client", "language": "python"}
+    base = {"schema_version": "1.0", "service": service, "kind": "http_client_call"}
+    calls = [
+        ("dep-1", "2026-05-09T22:00:00.000Z", "/v1/agents", 200, 80.0),
+        ("dep-2", "2026-05-09T22:00:01.000Z", "/v1/agents", 200, 120.0),
+        ("dep-3", "2026-05-09T22:00:02.000Z", "/v1/agents/42", 200, 60.0),
+        ("dep-4", "2026-05-09T22:00:03.000Z", "/v1/agents/42", 304, 20.0),
+        ("dep-5", "2026-05-09T22:00:04.000Z", "/v1/health", 200, 10.0),
+        ("dep-6", "2026-05-09T22:00:05.000Z", "/v1/agents/missing", 404, 30.0),
+        ("dep-7", "2026-05-09T22:00:06.000Z", "/v1/agents", 500, 200.0),
+        ("dep-8", "2026-05-09T22:00:07.000Z", "/v1/agents", 200, 95.0),
+    ]
+    return [{**base, "event_id": evt_id, "timestamp": ts, "trace_id": f"trace-{evt_id}", "payload": {"method": "GET", "host": "lx-internal-agents.example.com", "target": "lx-internal-agents.example.com", "path": path, "status_code": status, "duration_ms": ms}} for evt_id, ts, path, status, ms in calls]
+
+
+def test_dependency_context_returns_stats_distribution_paths_and_samples(tmp_path):
+    client = make_client(tmp_path)
+    ingest_per_project(client, http_dep_events())
+
+    apps = client.get("/api/apps").json()
+    app_id = apps[0]["id"]
+    deps = client.get(f"/api/apps/{app_id}/dependencies").json()
+    http_dep = next(dep for dep in deps if dep["dependency_type"] == "http")
+
+    ctx = client.get(f"/api/dependencies/{http_dep['id']}/context").json()
+
+    assert ctx["dependency"]["target"] == "lx-internal-agents.example.com"
+    assert len(ctx["samples"]) == 8
+
+    stats = ctx["stats"]
+    assert stats["count"] == 8
+    assert stats["min_ms"] == 10.0
+    assert stats["max_ms"] == 200.0
+    assert stats["avg_ms"] > 0
+    assert stats["p50_ms"] > 0
+    assert stats["p95_ms"] > 0
+    assert stats["calls_per_min"] > 0
+
+    dist = {entry["bucket"]: entry["count"] for entry in ctx["status_distribution"]}
+    assert dist == {"2xx": 5, "3xx": 1, "4xx": 1, "5xx": 1}
+
+    paths = {entry["path"]: entry for entry in ctx["top_paths"]}
+    assert paths["/v1/agents"]["count"] == 4
+    assert paths["/v1/agents/42"]["count"] == 2
+    assert paths["/v1/agents"]["error_count"] == 1
+    assert paths["/v1/agents"]["avg_ms"] > 0
+    assert paths["/v1/agents"]["p95_ms"] > 0
+    assert paths["/v1/health"]["error_count"] == 0
+
+    assert isinstance(ctx["time_series"], list)
+    assert all({"bucket_start", "call_count", "avg_ms"} <= set(point.keys()) for point in ctx["time_series"])
+    assert sum(point["call_count"] for point in ctx["time_series"]) == 8
 
 
 def semantic_trace_events():

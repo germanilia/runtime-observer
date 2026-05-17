@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 import os
 from pathlib import Path
+import warnings
 
 _LOG_LEVEL_ORDER = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 _LOG_LEVEL_RANK = {level: index for index, level in enumerate(_LOG_LEVEL_ORDER)}
@@ -19,7 +20,10 @@ class CaptureMode(StrEnum):
 class RuntimeObserverConfig:
     api_key: str | None = None
     endpoint: str = "http://127.0.0.1:4319"
-    project_name: str | None = None
+    project_name: str | None = field(
+        default=None,
+        metadata={"deprecated": "Projects are resolved by the collector from the API key; this value is kept for legacy SDK compatibility only."},
+    )
     service_name: str | None = None
     display_name: str | None = None
     environment: str = "development"
@@ -44,8 +48,6 @@ class RuntimeObserverConfig:
     @property
     def exporting_enabled(self) -> bool:
         if not self.enabled or self.capture_mode == CaptureMode.OFF:
-            return False
-        if not self.project_name:
             return False
         return bool(self.api_key) or self.insecure_local_dev
 
@@ -114,10 +116,18 @@ def resolve_config(**overrides: object) -> RuntimeObserverConfig:
     if mode not in {"dev", "prod", "off"}:
         mode = "dev"
     environment = str(overrides.get("environment") or os.getenv("RUNTIME_OBSERVER_ENVIRONMENT") or ("production" if mode == "prod" else "development"))
+    project_name = str(overrides.get("project_name") or os.getenv("RUNTIME_OBSERVER_PROJECT_NAME") or "") or None
+    if project_name:
+        warnings.warn(
+            "RuntimeObserverConfig.project_name and RUNTIME_OBSERVER_PROJECT_NAME are deprecated; "
+            "the collector resolves the project from the API key. The SDK value is ignored by current collectors.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     config = RuntimeObserverConfig(
         api_key=overrides.get("api_key") if "api_key" in overrides else os.getenv("RUNTIME_OBSERVER_API_KEY"),
         endpoint=str(overrides.get("endpoint") or os.getenv("RUNTIME_OBSERVER_ENDPOINT") or overrides.get("default_endpoint") or "http://127.0.0.1:4319"),
-        project_name=str(overrides.get("project_name") or os.getenv("RUNTIME_OBSERVER_PROJECT_NAME") or "") or None,
+        project_name=project_name,
         service_name=_service_name(overrides.get("service_name") if isinstance(overrides.get("service_name"), str) else None),
         display_name=str(overrides.get("display_name") or os.getenv("RUNTIME_OBSERVER_DISPLAY_NAME") or overrides.get("app_name") or os.getenv("RUNTIME_OBSERVER_APP_NAME") or "") or None,
         environment=environment,

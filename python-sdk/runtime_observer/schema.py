@@ -81,6 +81,8 @@ class EventBuilder:
     config: RuntimeObserverConfig
 
     def service(self) -> dict[str, str]:
+        # project_name is emitted only for compatibility with older collectors.
+        # Current collectors overwrite it using the project API key on ingest.
         service = {
             "project_name": self.config.project_name or "",
             "name": self.config.service_name or "python-service",
