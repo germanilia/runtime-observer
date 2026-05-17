@@ -1,6 +1,6 @@
 {
   "name": "runtime-observer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Runtime Observer JavaScript SDK for browser and Node.js services",
   "type": "module",
   "main": "./js-sdk/index.js",
